@@ -140,9 +140,13 @@ extra=sorted(p.name for p in dist.iterdir() if p.name not in allowed); \
 assert not extra, "REL1-05 FAIL: unexpected %r"%extra; \
 print("REL1-05 ok: dist/ layout matches docs/RELEASE.md")'
 
+# --repo points at a throwaway name so a live GitHub release cannot satisfy these
+# DistDir contract cases (install.sh tries the release asset first).
+REL1_REPO ?= amgio38/opencrayast-no-such-repo-for-rel1
+
 test-rel1-install-ok: release-static
 	@tmpdir=$$(mktemp -d) && \
-	./install.sh --dist dist --prefix "$$tmpdir" --target $(TARGET) && \
+	./install.sh --dist dist --prefix "$$tmpdir" --target $(TARGET) --repo $(REL1_REPO) && \
 	test -x "$$tmpdir/bin/opencrayast" && \
 	test -x "$$tmpdir/bin/opencrayast-mcp" && \
 	rm -rf "$$tmpdir" && \
@@ -154,7 +158,7 @@ test-rel1-install-bad: release-static
 	baddir=$$(mktemp -d); \
 	cp -a dist/. "$$baddir/"; \
 	python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); lines=p.read_text().splitlines(True); h,r=lines[0].split("  ",1); lines[0]=("0" if h[0]!="0" else "1")+h[1:]+"  "+r; p.write_text("".join(lines))' "$$baddir/SHA256SUMS"; \
-	if ./install.sh --dist "$$baddir" --prefix "$$tmpdir" --target $(TARGET); then \
+	if ./install.sh --dist "$$baddir" --prefix "$$tmpdir" --target $(TARGET) --repo $(REL1_REPO); then \
 		echo "REL1-08 FAIL: install.sh accepted a bad SHA256SUMS" >&2; \
 		rm -rf "$$tmpdir" "$$baddir"; \
 		exit 1; \
@@ -178,7 +182,7 @@ test-rel1-install-truncated: release-static
 sums=d/"SHA256SUMS"; keep=[ln for ln in sums.read_text().splitlines(True) if ln.rstrip().endswith("/opencrayast-mcp")]; \
 assert len(keep)==1, keep; sums.write_text("".join(keep)); \
 cli=d/t/"opencrayast"; cli.write_bytes(cli.read_bytes()+b"X")' "$$baddir" "$(TARGET)"; \
-	if ./install.sh --dist "$$baddir" --prefix "$$tmpdir" --target $(TARGET); then \
+	if ./install.sh --dist "$$baddir" --prefix "$$tmpdir" --target $(TARGET) --repo $(REL1_REPO); then \
 		echo "REL1-09 FAIL: truncated SHA256SUMS still installed" >&2; \
 		rm -rf "$$tmpdir" "$$baddir"; \
 		exit 1; \

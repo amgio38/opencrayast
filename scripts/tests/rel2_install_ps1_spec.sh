@@ -214,9 +214,15 @@ run_exec_cases() {
 	printf '1.0.0\n'        > "$good/VERSION"
 	( cd "$good" && sha256sum "$label/opencrayast.exe" "$label/opencrayast-mcp.exe" > SHA256SUMS )
 
+	# Isolate DistDir cases from a live GitHub release. install.ps1 tries the
+	# release asset first; once v* exists that path wins (or Write-Error+Stop
+	# aborts) and these cases stop testing the SHA256SUMS contract. A throwaway
+	# -Repo makes Get-ReleaseAsset 404 so DistDir is exercised.
+	local norepo='amgio38/opencrayast-no-such-repo-for-rel2'
+
 	# REL2-09: a good tree installs both.
 	local dest="$tmp/ok"
-	if "$pwsh_bin" -NoProfile -File "$ps1" -DistDir "$good" -Prefix "$dest" -Target "$label" >/dev/null 2>&1; then
+	if "$pwsh_bin" -NoProfile -File "$ps1" -DistDir "$good" -Prefix "$dest" -Target "$label" -Repo "$norepo" >/dev/null 2>&1; then
 		if [ -f "$dest/bin/opencrayast.exe" ] && [ -f "$dest/bin/opencrayast-mcp.exe" ]; then
 			ok "REL2-09 $label: a good dist installs both binaries"
 		else
@@ -244,7 +250,7 @@ assert n == 1, f"no digest line to corrupt in {text!r}"
 p.write_text(new)
 PY
 	dest2="$tmp/bad-prefix"
-	if "$pwsh_bin" -NoProfile -File "$ps1" -DistDir "$bad_dir" -Prefix "$dest2" -Target "$label" >/dev/null 2>&1; then
+	if "$pwsh_bin" -NoProfile -File "$ps1" -DistDir "$bad_dir" -Prefix "$dest2" -Target "$label" -Repo "$norepo" >/dev/null 2>&1; then
 		bad "REL2-10 $label: install.ps1 accepted a bad SHA256SUMS"
 	elif [ -e "$dest2/bin/opencrayast.exe" ] || [ -e "$dest2/bin/opencrayast-mcp.exe" ]; then
 		bad "REL2-10 $label: a refused install still wrote binaries"
@@ -266,7 +272,7 @@ cli = d / t / "opencrayast.exe"
 cli.write_bytes(cli.read_bytes() + b"X")
 PY
 	dest3="$tmp/trunc-prefix"
-	if "$pwsh_bin" -NoProfile -File "$ps1" -DistDir "$tmp/trunc" -Prefix "$dest3" -Target "$label" >/dev/null 2>&1; then
+	if "$pwsh_bin" -NoProfile -File "$ps1" -DistDir "$tmp/trunc" -Prefix "$dest3" -Target "$label" -Repo "$norepo" >/dev/null 2>&1; then
 		bad "REL2-11 $label: a truncated SHA256SUMS still installed"
 	elif [ -e "$dest3/bin/opencrayast.exe" ] || [ -e "$dest3/bin/opencrayast-mcp.exe" ]; then
 		bad "REL2-11 $label: a truncated SHA256SUMS still wrote binaries"
