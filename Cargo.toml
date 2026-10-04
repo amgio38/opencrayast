@@ -50,7 +50,7 @@ opencrayast-lang = { path = "crates/lang", version = "0.20261002.1" }
 opencrayast-query = { path = "crates/query", version = "0.20261002.1" }
 opencrayast-edit = { path = "crates/edit", version = "0.20261002.1" }
 opencrayast-tools = { path = "crates/tools", version = "0.20261002.1" }
-sha2 = "0.10"
+sha2 = "0.11"
 data-encoding = "2"
 # CLI argument parsing only (ISSUE-CLI-SKELETON). "4.5" is cargo's caret requirement, so it admits
 # any 4.x >= 4.5 (4.6.7 today) and NOT 5.0: the derive API is stable across clap's 4.x minor
