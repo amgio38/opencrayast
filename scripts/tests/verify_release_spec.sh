@@ -141,12 +141,19 @@ rm -rf "$d"
 # --- GIT-01: action pinned to a tag ------------------------------------------
 d=$(fixture)
 python3 - "$d/.github/workflows/ci.yml" <<'PY'
-import sys
+import re, sys
 p = sys.argv[1]
 s = open(p).read()
-s = s.replace("actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0",
-              "actions/checkout@v4 # unpinned on purpose")
-open(p, "w").write(s)
+# Do not hardcode a SHA: Dependabot rotates the pin, and a fixed replace then
+# becomes a no-op so this case falsely goes green.
+new, n = re.subn(
+    r"actions/checkout@[0-9a-f]{40}(?:\s+#.*)?",
+    "actions/checkout@v4 # unpinned on purpose",
+    s,
+    count=1,
+)
+assert n == 1, "ci.yml has no SHA-pinned actions/checkout line to unpin"
+open(p, "w").write(new)
 PY
 expect_red "GIT-01 goes red when an action is pinned to a tag" GIT-01 "$d"
 rm -rf "$d"
