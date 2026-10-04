@@ -147,9 +147,11 @@ function Test-ReleaseChecksum {
 
     if (-not $want) {
         if (-not $Insecure) {
-            Write-Error "install.ps1: no published SHA-256 for $asset; refusing to install an unverified binary."
-            Write-Error "install.ps1: pass -Insecure to accept it anyway."
-            return $false
+            # Fail (not Write-Error): $ErrorActionPreference is Stop, so Write-Error
+            # would terminate before DistDir/source fall-through could run. A downloaded
+            # asset without a checksum is a hard refuse, not a soft miss.
+            Fail "no published SHA-256 for $asset; refusing to install an unverified binary." `
+                 'pass -Insecure to accept it anyway.'
         }
         Note "-Insecure: installing $asset with no checksum"
         return $true
@@ -157,8 +159,8 @@ function Test-ReleaseChecksum {
 
     $actual = (Get-FileHash -LiteralPath $script:DownloadedAsset -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $want) {
-        Write-Error "install.ps1: checksum mismatch for $asset (expected $want, got $actual); nothing installed"
-        return $false
+        Fail "checksum mismatch for $asset (expected $want, got $actual); nothing installed" `
+             'nothing installed.'
     }
     Note "checksum verified for $asset"
     return $true
@@ -172,7 +174,12 @@ function Install-FromRelease {
     New-Item -ItemType Directory -Path $unpack -Force | Out-Null
     # The archive carries the two programs and, under one directory, the licence files. The
     # two programs are an exact allowlist: anything else at the top level is refused.
-    Expand-Archive -LiteralPath $script:DownloadedAsset -DestinationPath $unpack -Force
+    try {
+        Expand-Archive -LiteralPath $script:DownloadedAsset -DestinationPath $unpack -Force
+    } catch {
+        Note "release asset could not be unpacked; falling through ($($_.Exception.Message))"
+        return $false
+    }
 
     $programs = @(Get-ChildItem -LiteralPath $unpack -File |
                    Where-Object { $_.Name -in @('opencrayast.exe', 'opencrayast-mcp.exe') })
