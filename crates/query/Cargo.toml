@@ -1,0 +1,28 @@
+[package]
+name = "opencrayast-query"
+description = "Structural pattern search over syntax trees for opencrayast, with backtracking budgets."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["ast", "search", "tree-sitter", "pattern-matching", "codemod"]
+categories.workspace = true
+readme.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+opencrayast-core.workspace = true
+opencrayast-lang.workspace = true
+
+tree-sitter.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+# Differential oracle only (PAT-05 / ADR-005). Never a runtime dependency.
+ast-grep-core = { version = "=0.45.3", default-features = true }

@@ -1,0 +1,64 @@
+name: Bug report
+description: Something does not work as documented
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. **Do not paste secrets or proprietary source code.** If the problem
+        involves a file escaping the workspace, an unreviewed change being written, or a
+        half-applied plan, that is a security problem: use the private report link on
+        the issue chooser instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `opencrayast --version` and `opencrayast-mcp --version`.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and CPU
+      placeholder: "Ubuntu 24.04 x86_64, macOS 15 arm64, Windows 11 x64"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options: [read-only, write]
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Agent / MCP client and version
+  - type: input
+    id: language
+    attributes:
+      label: Language(s) involved
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: The exact tool call (arguments) and the full reply.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: The smallest source file(s) and request that show it.
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`opencrayast doctor` output"
+      render: text

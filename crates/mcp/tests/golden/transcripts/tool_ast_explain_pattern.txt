@@ -1,0 +1,16 @@
+# golden-transcript v1
+# case: tool_ast_explain_pattern
+# covers: tool ast_explain_pattern (happy path)
+# responses: 1
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ast_explain_pattern","arguments":{"pattern":"fn $NAME() -> $T { $BODY }","language":"rust"}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"pattern: fn $NAME() -> $T { $BODY }\nlanguage: rust\nmetavariables: $NAME (one), $T (one), $BODY (one)\n```text\nwarning: pattern only parses inside a function body context\nfunction_item\n  \"fn\"\n  $NAME (one)\n  parameters\n    \"(\"\n    \")\"\n  \"->\"\n  $T (one)\n  block\n    \"{\"\n    $BODY (one)\n    \"}\"\n\n```\n","type":"text"}],"isError":false}}

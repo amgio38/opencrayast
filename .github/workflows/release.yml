@@ -1,0 +1,280 @@
+# Release build for opencrayast (ROADMAP M7, SECURITY-MODEL T-22 / TESTING.md SUP-03).
+#
+# `docs/SECURITY-MODEL.md` (T-22) and `docs/TESTING.md` (SUP-03) promise that a release is
+# created ONLY if every platform builds. That promise is kept structurally, not by
+# convention: the `publish` job depends on every matrix leg, so a single failing
+# platform means no release is created at all.
+#
+# The layout produced here is the one `install.sh` and `docs/RELEASE.md` §3 already
+# define: `dist/<triple>/{opencrayast,opencrayast-mcp}`, plus `dist/VERSION`,
+# `dist/LICENSE`, `dist/README.md` and `dist/SHA256SUMS` with paths relative to `dist/`.
+# `install.sh` verifies SHA256SUMS before copying anything, and refuses a sums file that
+# omits a binary it is about to install.
+#
+# UNVERIFIED HERE: this workflow has never been executed. It was authored in a
+# container with no GitHub runner, so the matrix, the cross-compilation toolchains and
+# the first real tag are all untested. It is written to be read, not trusted, until it
+# has run. See the note in docs/RELEASE.md.
+name: release
+
+"on":
+  push:
+    tags: ["v*"]
+  # Dry run: build every platform and produce the tree, but create no release and
+  # upload nothing. This is the only way to exercise the matrix before the first tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # A tag that disagrees with the in-code version is refused (ROADMAP M7: "tag must
+  # equal the in-code version"; docs/RELEASE.md §1 is the single source of truth).
+  # The value is compared, not assumed, so a mis-tagged release cannot ship.
+  verify-tag:
+    name: Tag matches the workspace version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.ref }}
+      - name: Read the workspace version
+        id: check
+        run: |
+          version=$(python3 -c "
+          import pathlib, re
+          t = pathlib.Path('Cargo.toml').read_text()
+          m = re.search(r'^\[workspace\.package\]\s*(.*?)(?=^\[)', t, re.S | re.M)
+          print(re.search(r'^version\s*=\s*\"([^\"]+)\"', m.group(1), re.M).group(1))
+          ")
+          tag="${GITHUB_REF_NAME#v}"
+          echo "workspace version: $version ; tag: $tag"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::tag v$tag does not match Cargo.toml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Grammar provenance is a release gate, not a suggestion: five tree-sitter grammars are
+      # compiled into the binaries, and a grammar arriving from a git source or a floating
+      # branch is a supply-chain change that a release must not carry silently. The check reads
+      # BOTH Cargo.lock (git sources) and the manifests (branch/tag/rev), because cargo resolves
+      # a branch to a commit and writes that commit into the lockfile — the lockfile alone
+      # cannot see that it was ever a float.
+      - name: Grammar provenance
+        run: bash scripts/check-grammar-provenance.sh
+
+      - name: Third-party licence notices are present
+        run: |
+          set -euo pipefail
+          test -s THIRD-PARTY-LICENSES.md || {
+            echo "::error::THIRD-PARTY-LICENSES.md missing or empty; regenerate with python3 scripts/gen-third-party-licenses.py"
+            exit 1
+          }
+          echo "THIRD-PARTY-LICENSES.md present ($(wc -l < THIRD-PARTY-LICENSES.md) lines)"
+
+  build:
+    name: ${{ matrix.triple }}
+    needs: verify-tag
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # fail-fast: false so a broken platform still reports; the publish job below is
+      # what enforces all-or-nothing.
+      fail-fast: false
+      matrix:
+        include:
+          - triple: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - triple: aarch64-apple-darwin
+            os: macos-latest
+          - triple: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: 1.95.0
+          targets: ${{ matrix.triple }}
+
+      # The musl target needs a linker that can target it; the default runner gcc
+      # cannot. The Windows leg needs the MSVC environment the runner already has.
+      - name: Install the musl target support
+        if: matrix.triple == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build the release binaries
+        run: cargo build --release --workspace --locked --target ${{ matrix.triple }}
+
+      - name: Stage the dist tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          triple="${{ matrix.triple }}"
+          out="dist/$triple"
+          mkdir -p "$out"
+          src="target/$triple/release"
+          for bin in opencrayast opencrayast-mcp; do
+            cp -f "$src/$bin.exe" "$out/$bin.exe" 2>/dev/null || cp -f "$src/$bin" "$out/$bin"
+          done
+          # The static build is the point of the musl leg; a dynamically linked one
+          # would not run on a clean machine and would defeat install.sh's promise.
+          #
+          # `file` words this two ways depending on the build: a static non-PIE binary reads
+          # "statically linked", a static PIE reads "static-pie linked". Rust produces the PIE
+          # form by default, so matching only the first wording failed every run while the
+          # artefact it rejected was in fact static. Both are accepted; a dynamic binary says
+          # "dynamically linked" and matches neither.
+          if [ "$triple" = "x86_64-unknown-linux-musl" ]; then
+            file "$out/opencrayast" | tee /dev/stderr | grep -qE 'statically linked|static-pie linked' \
+              || { echo "::error::musl binary is not statically linked"; exit 1; }
+          fi
+
+      - name: Stage the per-triple checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          triple="${{ matrix.triple }}"
+          cd dist
+          # Git Bash sha256sum on Windows emits `hash *file` (binary mode). GNU on
+          # Linux/macOS emits `hash  file` (two spaces). Match either marker, then
+          # rewrite to portable text-mode lines with the triple/ prefix install.sh
+          # and the publish merge step both expect.
+          (cd "$triple" && sha256sum * | sed -E 's|^([0-9a-f]+) [ *]|\1  '"${triple}"'/|') > "SHA256SUMS.$triple"
+          cat "SHA256SUMS.$triple"
+
+      - name: Upload the triple
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.triple }}
+          # Upload the triple directory AND its checksum file under `dist/`, so the
+          # publish job can merge-multiple into a real `dist/<triple>/…` tree. Uploading
+          # only `dist/<triple>` strips the parent and drops SHA256SUMS.<triple>, which
+          # left publish with loose binaries at the workspace root and no `dist/` folder.
+          path: |
+            dist/${{ matrix.triple }}
+            dist/SHA256SUMS.${{ matrix.triple }}
+          if-no-files-found: error
+
+  # The gate. `needs: [build]` — every matrix leg, not one of them.
+  publish:
+    name: Publish the release
+    needs: [verify-tag, build]
+    runs-on: ubuntu-latest
+    # Only a real tag publishes. workflow_dispatch builds and verifies the tree, then
+    # stops here, so a dry run cannot create a release by accident.
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Download every platform tree
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: dist-*
+          # upload-artifact strips the shared `dist/` prefix (least-common-ancestor),
+          # so each artifact is `<triple>/…` + `SHA256SUMS.<triple>` at its root.
+          # Download into `dist/` + merge-multiple reconstitutes the full tree.
+          path: dist
+          merge-multiple: true
+
+      - name: Assemble dist/ and merge SHA256SUMS
+        run: |
+          set -euo pipefail
+          test -d dist || { echo "::error::dist/ missing after artifact download"; ls -la; exit 1; }
+          cp -f LICENSE README.md dist/
+          # The third-party notices travel with the artefact. The binaries statically link five
+          # tree-sitter grammars and the Rust dependency tree; a release tarball without the
+          # notices redistributes licensed work with none attached.
+          cp -f THIRD-PARTY-LICENSES.md dist/
+          # dist/README.md is the short use note install.sh's tree expects; the repo
+          # README is the wrong document for a two-binary artefact tree.
+          python3 - <<'PY'
+          import pathlib
+          v = pathlib.Path("dist/VERSION")
+          pathlib.Path("dist/VERSION").write_text(
+              pathlib.Path("Cargo.toml").read_text()
+              .split("[workspace.package]")[1].split("version")[1]
+              .split('"')[1] + "\n"
+          )
+          pathlib.Path("dist/README.md").write_text(
+              "# opencrayast release artefacts\n\n"
+              f"Version: `{v.read_text().strip()}`\n\n"
+              "Install from a local copy of this tree:\n\n"
+              "```sh\n"
+              "./install.sh --dist dist --prefix \"$HOME/.local\"\n"
+              "```\n\n"
+              "Every binary is listed in `SHA256SUMS` and verified before anything is "
+              "copied. See docs/RELEASE.md.\n"
+          )
+          PY
+          cat dist/SHA256SUMS.* > dist/SHA256SUMS
+          rm -f dist/SHA256SUMS.*
+          # Every binary in the tree must be covered by the sums file. install.sh
+          # refuses a truncated one; the release must not be able to ship one either.
+          python3 - <<'PY'
+          import pathlib, sys
+          d = pathlib.Path("dist")
+          listed = {ln.split(maxsplit=1)[1].strip().lstrip("*")
+                    for ln in (d / "SHA256SUMS").read_text().splitlines() if ln.strip()}
+          # Only the release binaries under dist/<triple>/ — not LICENSE/VERSION/
+          # SHA256SUMS at the dist root (those have no suffix and used to false-fail).
+          names = {"opencrayast", "opencrayast-mcp", "opencrayast.exe", "opencrayast-mcp.exe"}
+          binaries = {p.relative_to(d).as_posix() for p in d.rglob("*")
+                      if p.is_file() and p.name in names}
+          missing = sorted(binaries - listed)
+          if missing:
+              print("::error::not listed in SHA256SUMS: " + ", ".join(missing))
+              sys.exit(1)
+          print(f"SHA256SUMS covers all {len(binaries)} binaries")
+          PY
+
+      # softprops/action-gh-release flattens paths to basenames, so uploading
+      # dist/*/opencrayast would collide Linux vs Darwin. install.sh / install.ps1
+      # expect one archive per triple: opencrayast-$TARGET.tar.gz|.zip (+ .sha256).
+      - name: Package per-triple archives
+        run: |
+          set -euo pipefail
+          doc="share/doc/opencrayast"
+          mkdir -p dist/assets
+          for triple_dir in dist/*/ ; do
+            triple=$(basename "$triple_dir")
+            [ "$triple" = "assets" ] && continue
+            [ -d "dist/$triple" ] || continue
+            stage=$(mktemp -d)
+            mkdir -p "$stage/$doc"
+            cp -f dist/LICENSE dist/README.md dist/THIRD-PARTY-LICENSES.md dist/VERSION "$stage/$doc/"
+            if [ -f "dist/$triple/opencrayast.exe" ]; then
+              cp -f "dist/$triple/opencrayast.exe" "dist/$triple/opencrayast-mcp.exe" "$stage/"
+              asset="opencrayast-${triple}.zip"
+              (cd "$stage" && zip -qr "$OLDPWD/dist/assets/$asset" opencrayast.exe opencrayast-mcp.exe "$doc")
+            else
+              cp -f "dist/$triple/opencrayast" "dist/$triple/opencrayast-mcp" "$stage/"
+              asset="opencrayast-${triple}.tar.gz"
+              (cd "$stage" && tar -czf "$OLDPWD/dist/assets/$asset" opencrayast opencrayast-mcp "$doc")
+            fi
+            (cd dist/assets && sha256sum "$asset" > "${asset}.sha256")
+            rm -rf "$stage"
+            echo "packaged dist/assets/$asset"
+            cat "dist/assets/${asset}.sha256"
+          done
+          ls -la dist/assets
+
+      - name: Create the release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          generate_release_notes: true
+          files: |
+            dist/SHA256SUMS
+            dist/VERSION
+            dist/LICENSE
+            dist/README.md
+            dist/THIRD-PARTY-LICENSES.md
+            dist/assets/*

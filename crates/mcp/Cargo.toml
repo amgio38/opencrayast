@@ -1,0 +1,33 @@
+[package]
+name = "opencrayast-mcp"
+description = "opencrayast as a Model Context Protocol (MCP) server: structural code reading and previewed edits over stdio."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["mcp", "ast", "llm", "tree-sitter", "code-analysis"]
+categories.workspace = true
+readme.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+opencrayast-tools.workspace = true
+opencrayast-core.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "opencrayast-mcp"
+path = "src/main.rs"
+
+[lib]
+name = "opencrayast_mcp"
+path = "src/lib.rs"

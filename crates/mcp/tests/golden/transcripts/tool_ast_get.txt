@@ -1,0 +1,16 @@
+# golden-transcript v1
+# case: tool_ast_get
+# covers: tool ast_get (happy path)
+# responses: 1
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ast_get","arguments":{"symbol":"helper","path":"hello.rs"}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"hello.rs:1  fn helper  (rust)\n```rust\nfn helper() -> i32 { 1 }\n```\n","type":"text"}],"isError":false}}

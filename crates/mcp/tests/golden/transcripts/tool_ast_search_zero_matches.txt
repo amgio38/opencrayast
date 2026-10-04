@@ -1,0 +1,16 @@
+# golden-transcript v1
+# case: tool_ast_search_zero_matches
+# covers: tool ast_search (zero matches is a successful result, not an error)
+# responses: 1
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ast_search","arguments":{"pattern":"fn nosuch() -> $T { $BODY }","paths":["hello.rs"]}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"0 matches in 1 files (rust)\n","type":"text"}],"isError":false}}

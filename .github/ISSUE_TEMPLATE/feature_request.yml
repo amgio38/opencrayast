@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest an improvement
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation before the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - A tool or its output
+        - The pattern language
+        - A language / grammar
+        - The edit engine (plans, apply, undo)
+        - Configuration
+        - Installation and releases
+        - Documentation
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: I read the non-goals in the roadmap (no semantic analysis, no execution, no daemon).
+          required: true

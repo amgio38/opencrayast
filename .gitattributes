@@ -1,0 +1,13 @@
+# Keep golden fixtures and transcripts byte-stable across Windows checkouts.
+# Parse offset goldens and MCP transcripts assume LF; CRLF shifts every ERROR@N..M.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.wasm binary
+*.exe binary
+*.dll binary
+*.pdb binary

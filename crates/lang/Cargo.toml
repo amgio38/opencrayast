@@ -1,0 +1,34 @@
+[package]
+name = "opencrayast-lang"
+description = "Language registry and budgeted tree-sitter parsing for opencrayast, with per-language features."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["ast", "tree-sitter", "parser", "language-detection", "parsing"]
+categories.workspace = true
+readme.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["lang-rust", "lang-typescript", "lang-javascript", "lang-python", "lang-go"]
+lang-rust = ["dep:tree-sitter-rust"]
+lang-typescript = ["dep:tree-sitter-typescript"]
+lang-javascript = ["dep:tree-sitter-javascript"]
+lang-python = ["dep:tree-sitter-python"]
+lang-go = ["dep:tree-sitter-go"]
+
+[dependencies]
+opencrayast-core.workspace = true
+tree-sitter.workspace = true
+tree-sitter-rust = { workspace = true, optional = true }
+tree-sitter-typescript = { workspace = true, optional = true }
+tree-sitter-javascript = { workspace = true, optional = true }
+tree-sitter-python = { workspace = true, optional = true }
+tree-sitter-go = { workspace = true, optional = true }

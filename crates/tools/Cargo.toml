@@ -1,0 +1,26 @@
+[package]
+name = "opencrayast-tools"
+description = "The opencrayast tool catalogue and handlers shared by the MCP server and the CLI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["ast", "mcp", "tooling", "code-analysis", "llm"]
+categories.workspace = true
+readme.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+opencrayast-core.workspace = true
+opencrayast-lang.workspace = true
+opencrayast-query.workspace = true
+opencrayast-edit.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

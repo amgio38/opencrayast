@@ -1,0 +1,196 @@
+# CI for opencrayast (ROADMAP M0, SECURITY-MODEL T-22).
+# Third-party actions are pinned to full commit SHAs; trailing comments name the tag.
+name: ci
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-llvm-cov
+
+      # Coverage self-test first, and it is cheap: it needs no cargo, so a broken
+      # gate is discovered before the expensive run below. Same reverse-verification
+      # convention as the layering and matrix self-tests.
+      - name: Coverage gate self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/test-check-coverage.sh
+
+      # Line-coverage floor for core / edit / query (REQ: the coverage threshold and
+      # the mutation self-proof are wired into CI, so removing the check is red).
+      # The floor lives in scripts/check-coverage.sh, not here. A failure message
+      # says "do not lower the floor to pass" - that is the whole point of the gate.
+      - name: Coverage gate
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/check-coverage.sh
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      # Proves the Format step above can actually fail: runs the same gate
+      # against copies of the tree carrying deliberate rustfmt violations and
+      # requires a non-zero exit, then that `cargo fmt --all` restores green.
+      - name: Format check self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/test-cargo-fmt.sh
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked --no-fail-fast
+
+      - name: Documentation check
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/check-docs.sh
+
+      # Proves the documentation check above can actually fail: plants a project-board
+      # id in crate source - inside the published crate and inside `cargo doc` output -
+      # and in nested src paths, and requires a non-zero exit naming the file
+      # (OSS-DOCS-01..07).
+      - name: Documentation check self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: sh scripts/tests/check_docs_spec.sh
+
+      - name: Threat-to-test matrix check
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/check-matrix.sh
+
+      # Proves the matrix check above can actually fail: deletes a referenced test
+      # file and a never-written obligation on copies of the tree and requires a
+      # non-zero exit (SECFIX3-01..06).
+      - name: Threat-to-test matrix self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: sh scripts/tests/check_matrix_spec.sh
+
+      - name: Grammar provenance check
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/check-grammar-provenance.sh
+
+      # Proves the check above can actually fail: plants a grammar missing from
+      # the provenance table, a version that drifted from the lockfile, a git
+      # source with no commit fragment, and a branch = float.
+      - name: Grammar provenance self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/test-check-grammar-provenance.sh
+
+      # The Windows installer's contract cases. These check properties of install.ps1's
+      # text — gate order, "nothing touches PREFIX before verification", the two-file
+      # whitelist, BOM handling, no elevation — so they are meaningful on any platform.
+      # Its three EXECUTION cases (good tree, tampered digest, truncated sums) need
+      # PowerShell and skip loudly here; on the Windows leg below they actually run.
+      - name: Installer contract self-test (install.ps1)
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/tests/rel2_install_ps1_spec.sh
+
+      - name: Installer execution self-test (install.ps1, real PowerShell)
+        if: matrix.os == 'windows-latest'
+        # `shell: bash` because the self-test is a bash script; the point of running it on
+        # this leg is that `pwsh` is on PATH there, so REL2-09/10/11 execute for real
+        # instead of skipping. Git Bash ships on the Windows runners.
+        shell: bash
+        run: bash scripts/tests/rel2_install_ps1_spec.sh
+
+      - name: Layering check
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/check-layering.sh
+
+      - name: Layering check self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/test-check-layering.sh
+
+      - name: Undeclared crate source check
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/check-undeclared-src.sh
+
+      # Proves the check above can actually fail: plants an undeclared .rs next
+      # to lib.rs and under a nested module directory, and requires a non-zero
+      # exit naming the file.
+      - name: Undeclared crate source self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/test-check-undeclared-src.sh
+
+      # The release-readiness checks, on every PR rather than only at tag time: a
+      # checklist that is only run before a release is a checklist that fails on the
+      # day it matters. The manual items are deliberately NOT acknowledged here -
+      # they need a person, and CI cannot stand in for one.
+      #
+      # cargo-deny has to be on PATH before this step: verify-release.sh runs `cargo
+      # deny check` itself and fails DENY-01 when the binary is missing, which is the
+      # right answer locally but wrong here, because the separate cargo-deny step below
+      # runs the action (its own container) and leaves nothing on this runner's PATH.
+      # Same pinned action as the coverage tool, so the install path is already trusted.
+      - name: Install cargo-deny for the readiness checklist
+        if: matrix.os == 'ubuntu-latest'
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-deny
+
+      - name: Release-readiness checks
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/verify-release.sh
+
+      - name: Release-readiness self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/tests/verify_release_spec.sh
+
+      # docs/TOOLS.md is the normative tool catalogue and used to claim it was
+      # reconciled with the registry in CI, when nothing did. Now it is: the tool
+      # set, each tool's mode, the four published annotations, each tool's
+      # inputSchema property names and the error codes -- in both directions.
+      #
+      # This is line B's checker (scripts/check-tools-docs.sh), which supersedes
+      # line A's near-identically named scripts/check-tools-doc.sh; A's file was
+      # deleted rather than kept alongside, because two scripts claiming the same
+      # check would leave the next reader with no idea which is authoritative.
+      # B's was kept because it is a strict superset: it additionally compares each
+      # tool's documented argument names against the properties its inputSchema
+      # actually publishes, which is the check that catches the `rule` defect.
+      - name: Tool catalogue documentation check
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/check-tools-docs.sh
+
+      # Proves the check above can actually fail: plants each kind of drift on
+      # copies of the tree and requires a non-zero exit (TDDOC-01..09).
+      - name: Tool catalogue documentation self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: sh scripts/tests/check_tools_docs_spec.sh
+
+      - name: cargo-deny
+        if: matrix.os == 'ubuntu-latest'
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+
+      # Proves the two gates above can actually fail. Without these, a green
+      # `cargo deny` step or a green `cargo fmt --check` step would only show
+      # that the tool ran, not that it would catch a violation. `cargo-deny` is
+      # already on the runner via the action's own toolchain, and the licensing
+      # self-test fails fast if it is not (M0 "each demonstrated once").
+      - name: Licensing gate self-test
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/test-check-licensing.sh

@@ -1,0 +1,16 @@
+# golden-transcript v1
+# case: error_tool_invalid_pattern
+# covers: error code invalid_pattern
+# responses: 1
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ast_search","arguments":{"pattern":"fn (((","paths":["hello.rs"]}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"[invalid_pattern] the pattern does not parse in any context (at byte 5 of the pattern) Next: fix the syntax, or wrap the pattern in a complete statement or block","type":"text"}],"isError":true}}

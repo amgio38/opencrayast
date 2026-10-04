@@ -1,0 +1,16 @@
+# golden-transcript v1
+# case: error_jsonrpc_invalid_request_null_id
+# covers: error code -32600 (invalid request: explicit null id)
+# responses: 1
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":null,"method":"ping"}
+{"error":{"code":-32600,"message":"invalid request"},"id":null,"jsonrpc":"2.0"}

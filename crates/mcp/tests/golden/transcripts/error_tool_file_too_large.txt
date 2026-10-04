@@ -1,0 +1,16 @@
+# golden-transcript v1
+# case: error_tool_file_too_large
+# covers: error code file_too_large
+# responses: 1
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ast_outline","arguments":{"path":"over.rs"}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"[file_too_large] File is 65 bytes, over the 64 byte limit Next: Read a smaller file or raise limits.max_file_bytes (up to its hard maximum).","type":"text"}],"isError":true}}

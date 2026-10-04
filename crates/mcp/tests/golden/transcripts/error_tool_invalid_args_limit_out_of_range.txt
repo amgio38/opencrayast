@@ -1,0 +1,16 @@
+# golden-transcript v1
+# case: error_tool_invalid_args_limit_out_of_range
+# covers: error code invalid_args (out-of-range argument)
+# responses: 1
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ast_outline","arguments":{"path":"hello.rs","limit":99999}}}
+{"id":2,"jsonrpc":"2.0","result":{"content":[{"text":"[invalid_args] limit is 99999, outside 1..=200 Next: Pass a limit between 1 and 200.","type":"text"}],"isError":true}}

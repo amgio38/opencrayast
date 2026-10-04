@@ -1,0 +1,84 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/lang",
+    "crates/query",
+    "crates/edit",
+    "crates/tools",
+    "crates/mcp",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.20261002.1"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+publish = false
+repository = "https://github.com/amgio38/opencrayast"
+# Shared metadata. These are `workspace = true`-inherited by every member, so the
+# publish-relevant fields are declared once and cannot drift between crates. The
+# per-crate `description` and `keywords` stay in each `crates/*/Cargo.toml`,
+# because only there is a one-line summary of what that crate actually is.
+#
+# `publish = false` above is a deliberate pre-release choice, not an oversight:
+# the workspace version is `0.YYYYMMDD.N` and the crates are not released yet.
+# Flipping that single flag is all that is required to make them publishable —
+# everything cargo demands is already declared here. That flip is an operator
+# decision for the public repository and has NOT been made here.
+homepage = "https://github.com/amgio38/opencrayast"
+documentation = "https://github.com/amgio38/opencrayast/tree/main/docs"
+readme = "README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["ast", "mcp", "tree-sitter", "code-analysis", "llm"]
+
+[workspace.dependencies]
+# Each workspace dependency carries BOTH a `path` and a `version`. The path builds
+# them locally; the version is what cargo publishes, and without it `cargo package`
+# fails with "all dependencies must have a version requirement specified when
+# packaging".
+#
+# The version below IS a literal, and that is a deliberate exception to the
+# one-version rule in docs/RELEASE.md §1 — cargo has no inheritance mechanism for a
+# dependency's version requirement (`version.workspace = true` is a *package* field
+# only, and does not apply here). The five literals below are therefore the only
+# place the version can drift, so REL1-10 checks them against
+# `[workspace.package].version` rather than trusting this comment.
+opencrayast-core = { path = "crates/core", version = "0.20261002.1" }
+opencrayast-lang = { path = "crates/lang", version = "0.20261002.1" }
+opencrayast-query = { path = "crates/query", version = "0.20261002.1" }
+opencrayast-edit = { path = "crates/edit", version = "0.20261002.1" }
+opencrayast-tools = { path = "crates/tools", version = "0.20261002.1" }
+sha2 = "0.10"
+data-encoding = "2"
+# CLI argument parsing only (ISSUE-CLI-SKELETON). "4.5" is cargo's caret requirement, so it admits
+# any 4.x >= 4.5 (4.6.7 today) and NOT 5.0: the derive API is stable across clap's 4.x minor
+# releases, and a 5.0 should be a deliberate decision rather than an accident of an update.
+# `default-features = false` keeps colour and the "did you mean" suggestions out of the tree; the
+# features listed are the ones this crate actually uses.
+clap = { version = "4.5", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
+tempfile = "3"
+tree-sitter = "0.27"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-go = "0.25"
+regex = "1"
+serde_json = "1"
+rustix = { version = "1", features = ["fs", "std", "process"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

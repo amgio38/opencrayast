@@ -1,0 +1,18 @@
+# golden-transcript v1
+# case: protocol_not_initialized
+# covers: error code -32002 (tools used before notifications/initialized)
+# responses: 2
+#
+# Recorded from the shipped opencrayast-mcp binary; replayed byte for byte.
+#
+# The only normalisation is (id w-<hex>) -> (id <WORKSPACE_ID>): that identity
+# is derived from the absolute path of the temporary workspace, so it differs
+# on every run by construction. Everything else is asserted exactly.
+#
+# Regenerate every transcript (overwrites this directory):
+#   cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record
+# Read the diff, then commit it: a change here is a change to the protocol.
+> {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ast_info","arguments":{}}}
+{"error":{"code":-32002,"message":"server not initialized"},"id":2,"jsonrpc":"2.0"}
+{"error":{"code":-32002,"message":"server not initialized"},"id":3,"jsonrpc":"2.0"}
