@@ -291,7 +291,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "opencrayast"
-version = "0.20261002.1"
+version = "0.20261007.1"
 dependencies = [
  "clap",
  "opencrayast-core",
@@ -302,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "opencrayast-core"
-version = "0.20261002.1"
+version = "0.20261007.1"
 dependencies = [
  "data-encoding",
  "rustix",
@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "opencrayast-edit"
-version = "0.20261002.1"
+version = "0.20261007.1"
 dependencies = [
  "opencrayast-core",
  "opencrayast-lang",
@@ -324,7 +324,7 @@ dependencies = [
 
 [[package]]
 name = "opencrayast-lang"
-version = "0.20261002.1"
+version = "0.20261007.1"
 dependencies = [
  "opencrayast-core",
  "tree-sitter",
@@ -337,7 +337,7 @@ dependencies = [
 
 [[package]]
 name = "opencrayast-mcp"
-version = "0.20261002.1"
+version = "0.20261007.1"
 dependencies = [
  "opencrayast-core",
  "opencrayast-tools",
@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "opencrayast-query"
-version = "0.20261002.1"
+version = "0.20261007.1"
 dependencies = [
  "ast-grep-core",
  "opencrayast-core",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "opencrayast-tools"
-version = "0.20261002.1"
+version = "0.20261007.1"
 dependencies = [
  "opencrayast-core",
  "opencrayast-edit",

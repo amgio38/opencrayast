@@ -10,7 +10,7 @@ TARGET ?= x86_64-unknown-linux-musl
 DIST ?= dist
 CARGO ?= cargo
 
-.PHONY: release-static repro-check deny test-rel1 coverage coverage-gate verify-release \
+.PHONY: release-static repro-check deny test-rel1 coverage coverage-gate test-install-posix verify-release \
 	verify-release-strict \
 	test-rel1-version test-rel1-deny test-rel1-layout \
 	test-rel1-install-ok test-rel1-install-bad test-rel1-install-truncated \
@@ -40,6 +40,10 @@ coverage:
 
 coverage-gate:
 	bash scripts/test-check-coverage.sh
+
+# The README one-liner pipes install.sh into `sh` (dash on Debian/Ubuntu).
+test-install-posix:
+	bash scripts/test-install-posix.sh
 
 # ---------------------------------------------------------------------------
 # Pre-release readiness. `make verify-release` is the CI mode: mechanical checks,

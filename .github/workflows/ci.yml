@@ -40,6 +40,14 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/test-check-coverage.sh
 
+      # The README one-liner is `curl ... | sh`, and on Debian/Ubuntu `sh` is dash.
+      # This runs install.sh under sh, dash and bash (including the exact curl-pipe
+      # shape over a local HTTP server) and proves with a negative control that the
+      # old `set -euo pipefail` header would be caught.
+      - name: Installer runs under POSIX sh
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/test-install-posix.sh
+
       # Line-coverage floor for core / edit / query (REQ: the coverage threshold and
       # the mutation self-proof are wired into CI, so removing the check is red).
       # The floor lives in scripts/check-coverage.sh, not here. A failure message

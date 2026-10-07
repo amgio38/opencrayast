@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # Install opencrayast and opencrayast-mcp.
 #
-#   # one-line install (clones and builds, because there is no release yet):
-#   curl -fsSL https://raw.githubusercontent.com/amgio38/opencrayast/main/scripts/install.sh | sh
+#   # one-line install:
+#   curl -fsSL https://raw.githubusercontent.com/amgio38/opencrayast/main/install.sh | sh
 #
 #   # from a checkout, or with options:
-#   sh scripts/install.sh --prefix "$HOME/.local"
-#   sh scripts/install.sh --dist dist --prefix "$HOME/.local"
+#   sh install.sh --prefix "$HOME/.local"
+#   sh install.sh --dist dist --prefix "$HOME/.local"
 #
 # Pass options through the pipe with `sh -s --`:
 #
-#   curl -fsSL https://raw.githubusercontent.com/amgio38/opencrayast/main/scripts/install.sh | sh -s -- --prefix /opt/ast
+#   curl -fsSL https://raw.githubusercontent.com/amgio38/opencrayast/main/install.sh | sh -s -- --prefix /opt/ast
+#
+# This script has to run under plain POSIX `sh`, because that is what the
+# one-liner above hands it to: a pipe never reads the `#!` line, and on Debian
+# and Ubuntu `sh` is dash. Keep bash-only syntax out of it (scripts/test-install-posix.sh
+# runs it under dash in CI).
 #
 # Two paths, tried in this order:
 #
@@ -41,7 +46,12 @@
 #
 # Environment: PREFIX, DIST_DIR, TARGET, OPENCRAYAST_REPO, OPENCRAYAST_VERSION,
 # OPENCRAYAST_INSECURE.
-set -euo pipefail
+set -eu
+# `pipefail` is not POSIX: dash (Debian/Ubuntu `sh`) rejects `set -o pipefail`
+# and, run as `curl ... | sh`, died here on line 44. Probe in a subshell first
+# and turn it on only where the shell has it.
+# shellcheck disable=SC3040
+(set -o pipefail) 2>/dev/null && set -o pipefail
 
 DOC_SUBDIR='share/doc/opencrayast'
 

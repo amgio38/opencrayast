@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Until 1.0 the project is
 numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 
+## [0.20261007.001] — 2026-10-07
+
+### Fixed
+
+- **The one-line install no longer fails on Debian and Ubuntu.** The README
+  command `curl -fsSL .../install.sh | sh` died with
+  `sh: 44: set: Illegal option -o pipefail`: a pipe never reads the script's
+  `#!` line, `sh` is dash on those systems, and `install.sh` began with
+  `set -euo pipefail`. `pipefail` is now switched on only where the shell has
+  it, so the installer runs under dash, bash and any POSIX `sh`. The README
+  command is unchanged. The usage comments in `install.sh` also gave the
+  script a path under a `scripts` directory that does not exist; they now match
+  the README.
+
+### Added
+
+- `scripts/test-install-posix.sh` (CI step "Installer runs under POSIX sh",
+  `make test-install-posix`): runs the real `install.sh` under `sh`, `dash` and
+  `bash` — including the exact `curl | sh` shape over a local HTTP server —
+  checks that every install URL in the README names a file in the repository, and
+  carries a negative control that restores the old header and requires it to fail
+  under dash.
+
 ## [0.20261002.001] — 2026-10-04
 
 The first public import. `opencrayast` is an MCP server (plus a command-line

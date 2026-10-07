@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.20261002.1"
+version = "0.20261007.1"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
@@ -45,11 +45,11 @@ keywords = ["ast", "mcp", "tree-sitter", "code-analysis", "llm"]
 # only, and does not apply here). The five literals below are therefore the only
 # place the version can drift, so REL1-10 checks them against
 # `[workspace.package].version` rather than trusting this comment.
-opencrayast-core = { path = "crates/core", version = "0.20261002.1" }
-opencrayast-lang = { path = "crates/lang", version = "0.20261002.1" }
-opencrayast-query = { path = "crates/query", version = "0.20261002.1" }
-opencrayast-edit = { path = "crates/edit", version = "0.20261002.1" }
-opencrayast-tools = { path = "crates/tools", version = "0.20261002.1" }
+opencrayast-core = { path = "crates/core", version = "0.20261007.1" }
+opencrayast-lang = { path = "crates/lang", version = "0.20261007.1" }
+opencrayast-query = { path = "crates/query", version = "0.20261007.1" }
+opencrayast-edit = { path = "crates/edit", version = "0.20261007.1" }
+opencrayast-tools = { path = "crates/tools", version = "0.20261007.1" }
 sha2 = "0.10"
 data-encoding = "2"
 # CLI argument parsing only (ISSUE-CLI-SKELETON). "4.5" is cargo's caret requirement, so it admits
