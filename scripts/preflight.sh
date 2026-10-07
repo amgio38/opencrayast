@@ -48,6 +48,18 @@ if [ -n "$dirty" ] || [ -n "$untracked" ]; then
 fi
 echo "  clean"
 
+# Scripts may be run directly (`scripts/foo.sh`), and a file committed as 100644 then fails
+# with exit code 126 where the working-tree copy happened to be executable. Check what git
+# will actually store, not what the disk shows.
+step "scripts are executable in git"
+nonexec="$(git ls-files -s -- 'scripts/*.sh' 'scripts/tests/*.sh' | awk '$1 != "100755" {print $4}' || true)"
+if [ -n "$nonexec" ]; then
+	echo "preflight: these scripts are not executable in git (git update-index --chmod=+x):" >&2
+	printf '%s\n' "$nonexec" >&2
+	exit 1
+fi
+echo "  all executable"
+
 step "version is consistent: Cargo.lock matches Cargo.toml, tag-style version has no stale copy"
 cargo metadata --locked --offline --format-version 1 >/dev/null
 version="$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' Cargo.toml | head -1)"

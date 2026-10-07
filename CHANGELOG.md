@@ -17,6 +17,8 @@ numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 - `scripts/preflight.sh` (`make preflight`): runs, before any push, what CI runs on
   Linux — format, clippy, the whole workspace test suite, the docs check, the gate
   self-tests and the coverage gate — and refuses a tree with uncommitted files.
+- Preflight also checks that every script is executable in git (a script committed as
+  100644 fails with exit code 126 wherever it is run directly).
 - `scripts/release.sh`: the one way to cut a release. It runs preflight, pushes
   `main`, waits for CI to finish green, and only then creates and pushes the tag and
   waits for the release and audit workflows. It refuses to reuse a tag.
