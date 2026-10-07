@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Until 1.0 the project is
 numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 
+## [Unreleased]
+
+### Fixed
+
+- The `audit` workflow no longer fails on every run after the first: it restores
+  `~/.cargo/bin` from cache, and a bare `cargo install cargo-audit` then exited with
+  "binary already exists". It now installs only when the binary is absent.
+
+### Added
+
+- `scripts/preflight.sh` (`make preflight`): runs, before any push, what CI runs on
+  Linux — format, clippy, the whole workspace test suite, the docs check, the gate
+  self-tests and the coverage gate — and refuses a tree with uncommitted files.
+- `scripts/release.sh`: the one way to cut a release. It runs preflight, pushes
+  `main`, waits for CI to finish green, and only then creates and pushes the tag and
+  waits for the release and audit workflows. It refuses to reuse a tag.
+  `docs/MAINTENANCE.md` documents the flow, including re-recording the MCP golden
+  transcripts after a version bump.
+
 ## [0.20261007.001] — 2026-10-07
 
 ### Fixed

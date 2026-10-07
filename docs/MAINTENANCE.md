@@ -57,21 +57,47 @@ repository root. Today that is `MIT` and [`LICENSE`](../LICENSE) (MIT License
 text). Before every release, run the reconcile check in
 [`PRERELEASE.md`](PRERELEASE.md#licence-and-cargo-metadata).
 
-## Release flow (until the M7 pipeline exists)
+## Release flow
 
-1. Branch from `main`, finish the change, open a PR.
-2. Walk [`PRERELEASE.md`](PRERELEASE.md) and keep the checked results with the
-   release notes (PR description or a linked comment).
-3. Merge only when CI on Linux, macOS and Windows is green
-   ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)).
-4. On `main`, set `Cargo.toml` version, cut the changelog section, commit.
-5. Tag `v` + Cargo version. Do not retag; fix forward with a new patch `N`.
-6. Build release artefacts (static Linux musl binaries as in
-   [`CONTRIBUTING.md`](../CONTRIBUTING.md#release-and-static-builds); macOS and
-   Windows natives when their toolchains are available). Publish checksums with
-   the artefacts once the M7 installers land.
-7. Confirm [`SECURITY.md`](../SECURITY.md) still describes the supported-version
-   policy you intend for this tag.
+One command cuts a release, and it enforces the order:
+
+```sh
+bash scripts/release.sh            # plan + preflight only, pushes nothing
+bash scripts/release.sh --publish  # preflight, push main, wait for CI green, tag, push tag, wait for release + audit green
+```
+
+[`scripts/release.sh`](../scripts/release.sh) refuses to run off `main`, refuses a tag
+that already exists locally or on origin, refuses a version with no
+`CHANGELOG.md` section, and creates the tag **only after CI on the pushed commit has
+finished green**. A published release therefore always points at a green commit.
+
+Before it, in the commit that opens the release:
+
+1. Set the `Cargo.toml` version (the workspace version and the five path-dependency
+   pins), refresh `Cargo.lock` (`cargo update --workspace --offline`), and cut the
+   `CHANGELOG.md` section. They travel together.
+2. **Re-record the MCP golden transcripts.** They contain the server version, so a
+   bump without this turns CI red on every platform:
+   `cargo test -p opencrayast-mcp --test mcp8_golden -- --ignored record`, then read
+   the diff: it must be the version string and nothing else.
+3. Walk [`PRERELEASE.md`](PRERELEASE.md) and keep the checked results with the
+   release notes.
+
+Rules that never bend:
+
+- **Nothing is pushed before [`scripts/preflight.sh`](../scripts/preflight.sh) passes**
+  on the exact tree being pushed (`make preflight`; `--quick` skips only the coverage
+  gate). It runs what CI runs on Linux: format, clippy, the **whole** workspace test
+  suite, the docs check, every gate self-test and the coverage gate. "I ran the
+  relevant checks" is how a red CI gets published.
+- Preflight cannot see the macOS and Windows legs. If one of those goes red, that is
+  a platform difference and the fix goes through the same path.
+- A tag is never moved, reused or deleted. If anything fails after the tag is
+  public, fix forward with a new version.
+- Static builds, checksums and what each artefact contains stay as described in
+  [`CONTRIBUTING.md`](../CONTRIBUTING.md#release-and-static-builds).
+- Confirm [`SECURITY.md`](../SECURITY.md) still describes the supported-version
+  policy you intend for this tag.
 
 ## Dependency and advisory hygiene
 

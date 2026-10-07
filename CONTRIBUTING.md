@@ -144,6 +144,8 @@ Name the tests or commands you ran.
 Use the GitHub pull request template. In short:
 
 - [ ] Single-purpose change; the description says what and why.
+- [ ] `make preflight` passed on the exact tree you are pushing (it runs what CI runs on
+      Linux: format, clippy, the whole test suite, docs check, gate self-tests, coverage).
 - [ ] Commands you ran and what they showed (not only "tested").
 - [ ] Documents and ADRs updated in the same PR when a guarantee, contract,
       layering rule or dependency policy changed.

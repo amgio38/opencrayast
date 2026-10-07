@@ -10,7 +10,7 @@ TARGET ?= x86_64-unknown-linux-musl
 DIST ?= dist
 CARGO ?= cargo
 
-.PHONY: release-static repro-check deny test-rel1 coverage coverage-gate test-install-posix verify-release \
+.PHONY: release-static repro-check deny test-rel1 coverage coverage-gate test-install-posix preflight verify-release \
 	verify-release-strict \
 	test-rel1-version test-rel1-deny test-rel1-layout \
 	test-rel1-install-ok test-rel1-install-bad test-rel1-install-truncated \
@@ -40,6 +40,11 @@ coverage:
 
 coverage-gate:
 	bash scripts/test-check-coverage.sh
+
+# Run before every push: what CI runs on Linux, on the tree being pushed.
+# `make preflight QUICK=1` skips only the coverage gate.
+preflight:
+	bash scripts/preflight.sh $(if $(QUICK),--quick,)
 
 # The README one-liner pipes install.sh into `sh` (dash on Debian/Ubuntu).
 test-install-posix:
