@@ -6,6 +6,8 @@ numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 
 ## [Unreleased]
 
+## [0.20261017.001] — 2026-10-17
+
 ### Fixed
 
 - `ast_undo` works for the whole journal retention (7 days by default), as the apply
