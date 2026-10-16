@@ -1,5 +1,6 @@
 #!/bin/sh
-# Documentation checks for the repository's Markdown files:
+# Documentation checks for the repository's Markdown files (top level, docs/, .github/ and
+# skills/):
 #   1. every relative link points at a file that exists, and every `#anchor`
 #      names a heading in the target file (GitHub's slug rules);
 #   2. no personal absolute path (/root/, /home/<user>/, /Users/<user>/) appears;
@@ -28,7 +29,7 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 files = sorted(p for p in root.glob("*.md")) + sorted((root / "docs").rglob("*.md")) \
-    + sorted((root / ".github").glob("*.md"))
+    + sorted((root / ".github").glob("*.md")) + sorted((root / "skills").rglob("*.md"))
 problems = []
 
 link_re = re.compile(r"\]\(([^)\s]+)\)")

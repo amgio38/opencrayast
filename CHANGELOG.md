@@ -14,6 +14,11 @@ numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 
 ### Added
 
+- `skills/opencrayast/`: an Agent Skill (`SKILL.md`, a reference file and the MIT
+  licence text) that teaches an agent when to use each tool, how to read code by
+  structure, and how to take an edit from preview to an approved apply without ever
+  enabling writes or confirming a plan itself. `scripts/check-docs.sh` now checks
+  Markdown under `skills/` too.
 - `scripts/preflight.sh` (`make preflight`): runs, before any push, what CI runs on
   Linux — format, clippy, the whole workspace test suite, the docs check, the gate
   self-tests and the coverage gate — and refuses a tree with uncommitted files.

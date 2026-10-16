@@ -30,7 +30,7 @@ fail=0
 # fixture that omitted them would report a pile of broken links and drown the case under test.
 fixture() {
     d=$(mktemp -d)
-    for p in docs scripts .github crates; do
+    for p in docs scripts .github crates skills; do
         [ -e "$repo/$p" ] && cp -R "$repo/$p" "$d/"
     done
     for p in README.md ROADMAP.md SECURITY.md CHANGELOG.md CONTRIBUTING.md \

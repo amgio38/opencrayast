@@ -205,6 +205,17 @@ Register the MCP server with your agent:
 claude mcp add opencrayast -- opencrayast-mcp --workspace .
 ```
 
+To teach the agent when and how to use the tools, install the bundled
+[Agent Skill](skills/opencrayast/SKILL.md) as well. For Claude Code, copy the folder
+into your skills directory:
+
+```sh
+cp -r skills/opencrayast ~/.claude/skills/        # for every project
+cp -r skills/opencrayast .claude/skills/          # or for this project only
+```
+
+Other agents that read `SKILL.md` folders take the same directory as it is.
+
 ### Platforms
 
 | Platform | How |
@@ -301,6 +312,7 @@ Day-to-day contributor commands, job caps and the full pre-submission checklist 
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Config, flags, defaults and limits |
 | [`docs/TESTING.md`](docs/TESTING.md) | Test strategy; the threat-to-test matrix; benchmarks |
 | [`docs/AGENT-GUIDE.md`](docs/AGENT-GUIDE.md) | How an agent should use the tools |
+| [`skills/opencrayast/SKILL.md`](skills/opencrayast/SKILL.md) | The same guidance packaged as an Agent Skill |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architecture decision records |
 
 ## Contributing and security
