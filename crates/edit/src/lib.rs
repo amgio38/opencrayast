@@ -11,6 +11,7 @@ mod fsutil;
 pub mod journal;
 pub mod jstore;
 pub mod plan;
+mod pybody;
 pub mod rewrite;
 pub mod store;
 pub mod template;

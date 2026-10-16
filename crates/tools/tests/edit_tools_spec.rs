@@ -210,7 +210,7 @@ fn edit10_01_preview_output_is_the_documented_shape_byte_for_byte() {
          +log2(2);\n\
          ```\n\
          Next: review the diff, then apply with ast_edit_apply plan_id={id}\n\
-         \x20     (write mode) or with `opencrayast edit apply {id}` (CLI).\n"
+         \x20     (write mode) or with `opencrayast --write edit apply {id}` (CLI).\n"
     );
     assert_eq!(
         out, expected,
@@ -389,8 +389,7 @@ fn edit10_04_apply_output_is_the_documented_shape_byte_for_byte() {
         "Applied {id} — 1 file changed.\n\
          \x20 src/a.ts   syntax errors 0 → 0\n\
          Undo with ast_undo plan_id={id} (kept 7 days).\n\
-         Next: verify the semantics — for example Run your project's type checker or \
-         language-server diagnostics on the changed files.\n\
+         Next: verify the semantics — for example run the language server's diagnostics\n\
          \x20     (lsp_diagnostics) on the changed files.\n"
     );
     assert_eq!(

@@ -3,10 +3,8 @@
 Detail that [`SKILL.md`](../SKILL.md) points to. Load this file when you need an
 argument range, an error code or a pattern rule that the main instructions do not cover.
 The project's normative tool specification is
-[`docs/TOOLS.md`](https://github.com/amgio38/opencrayast/blob/main/docs/TOOLS.md). This
-file describes what the server actually does. Where a tool's `description` in
-`tools/list` says something different (for example where plans are stored, or what
-`ast_plan_show` returns after an apply), trust the behaviour described here.
+[`docs/TOOLS.md`](https://github.com/amgio38/opencrayast/blob/main/docs/TOOLS.md). If the
+two ever disagree, the `description` the server returns in `tools/list` is the contract.
 
 ## Contents
 
@@ -92,7 +90,8 @@ fix.
 | `context_lines` | integer 0–5 | 0 | Lines around each match |
 | `limit` | integer 1..=`results` limit | 100 | Maximum matches |
 
-`rule` is refused on the MCP path with `[invalid_args]`.
+`rule` is refused on the MCP path with `[invalid_args]`. So is any other argument a tool
+does not have; the message lists the accepted names.
 
 ### `ast_explain_pattern`
 
@@ -106,9 +105,11 @@ fix.
 | `symbol` | `path`, `symbol`, `operation`; `text` for every operation except `delete` | `note` |
 
 `operation` is one of `replace`, `replace_body`, `delete`, `insert_before`,
-`insert_after`. For `replace_body`, `text` must start with the opening brace and end with
-the closing one, and it is only for languages whose bodies use braces (not Python);
-otherwise use `replace`. `delete` also removes the symbol's leading doc comment. `note` is at most 1024 bytes by default, and it is part of the plan, so
+`insert_after`. `replace_body` finds the body in the syntax tree. In a brace language
+`text` must start with the opening brace and end with the closing one; in Python it is the
+body's statements, re-indented to the body. A symbol with no braced body (an arrow function
+with an expression body) is refused; use `replace`. `delete` also removes the symbol's
+leading doc comment. `note` is at most 1024 bytes by default, and it is part of the plan, so
 changing it changes the plan id.
 
 ### Plan tools
@@ -140,7 +141,7 @@ of all of them are:
 | Plan size | 50 files, 500 edits |
 | Plan lifetime, counted from the preview | 15 minutes |
 | Unexpired plans per server process | 25 |
-| Undo journal retention | 7 days, but undo also needs the plan, so in practice undo works only while the plan is unexpired |
+| Undo journal retention (the undo window) | 7 days |
 | Wall-clock time per `ast_search` or `ast_get` call | 10 s |
 | Files scanned per call | 5,000 |
 
@@ -157,19 +158,18 @@ wall clock. Hitting the file-scan limit shows a `[walk truncated at … files]` 
 - Matching compares node kinds and their children. Whitespace and comments between nodes
   are ignored. Text inside strings and comments is compared exactly.
 - Nested matches are all reported by a search. A rewrite changes only the **outermost** of
-  two overlapping matches, and the preview does not say that it dropped the inner one:
-  compare the diff with the `ast_search` results.
+  two overlapping matches, and the preview says so in a `nested:` line.
 - In a replacement, `$NAME` and `$$$NAME` insert the captured source text, and `$$` is a
   literal `$`. A metavariable used in the replacement but not bound by the pattern is
   `[invalid_pattern]`.
 - Multi-line replacements are re-indented to the line where the match starts and use the
   file's line endings.
 - A captured expression is wrapped in parentheses when the replacement puts it next to an
-  operator that binds tighter (`$X * 2` with `$X = a + b` becomes `(a + b) * 2`). The
-  preview does not call this out; the diff shows it.
+  operator that binds tighter (`$X * 2` with `$X = a + b` becomes `(a + b) * 2`), and the
+  preview says so in a `parenthesised:` line.
 - A rewrite that would drop comments sitting between captured parts is refused with
-  `[comment_loss]`. Over MCP there is no option to allow it, although the error's `Next:`
-  line suggests one: capture the part that holds the comment, or narrow the rewrite.
+  `[comment_loss]`: capture the part that holds the comment, or narrow the pattern so the
+  comment lies outside every match.
 
 Examples:
 
@@ -195,9 +195,12 @@ Examples:
   `undoing`, `rolled_back` or `undone`.
 - A plan expires 15 minutes after the preview by default. Previewing the identical
   request again returns the same plan and does not extend it.
-- `ast_plan_show` is for reviewing a plan **before** it is applied. After an apply it
-  cannot be relied on to show the original diff. It never shows the current file
+- `ast_plan_show` renders the plan as it was previewed, before and after the apply (after
+  it, against the original the journal kept). A file that changed since the preview gets
+  `[no diff for <file>: StalePlan]` instead of a diff. It never shows the current file
   contents; use `ast_get` or `ast_outline` for those.
+- Each journal keeps a copy of its plan, so `ast_undo` works for the journal's retention
+  even after the plan has expired from the plan store.
 
 ## Errors
 
@@ -220,12 +223,12 @@ Every error has the form `[code] what is true. Next: what to do.`
 | `comment_loss` | The rewrite would drop comments | Capture the commented part or narrow the rewrite |
 | `gate_failed` | A safety gate refused the result (for example more syntax errors, or a changed line ending) | Fix the request; the message names the gate and the file |
 | `write_disabled` | Writing is off | Hand the plan id to the user |
-| `plan_not_found` / `plan_expired` / `plan_corrupt` / `wrong_workspace` | The plan cannot be used | Before an apply: preview again and show the new diff. From `ast_undo`: undo is no longer possible; tell the user to use version control |
+| `plan_not_found` / `plan_expired` / `plan_corrupt` / `wrong_workspace` | The plan cannot be used | Before an apply: preview again and show the new diff. From `ast_undo`: there is no usable journal any more; tell the user to use version control |
 | `stale_plan` | A file changed since the preview | Preview again and show the new diff |
 | `already_applied` | The plan was already applied | Nothing to do, or `ast_undo` it |
 | `busy` | Another apply holds the lock | Retry shortly |
 | `diverged` | Files changed after the apply, so undo or recovery cannot proceed | Do not retry. Tell the user; a person must resolve it |
-| `journal_missing` | The undo journal is gone | Undo is no longer possible; use version control. In practice an expired plan is reported as `plan_corrupt` instead |
+| `journal_missing` | Reserved; not emitted today. An undo whose journal is gone answers `plan_not_found` | – |
 | `unsupported_target` | The file is a symlink, hard-linked, read-only or has attributes that cannot be kept. Nothing was written | Tell the user |
 | `replaced_not_durable` | **The file was replaced**, but the change may not survive a crash | Re-read the file before deciding anything. Do not assume the write was lost |
 | `rollback_incomplete` | A rollback could not finish; the workspace may be partly applied | Call `ast_recover`; if that fails, tell the user to restore from version control |

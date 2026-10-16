@@ -112,7 +112,7 @@ struct Expansion {
 /// | the search reports `truncated` (more matches than `search_budget.max_matches`) | `limit_exceeded`, no edits: a partial rewrite is never produced |
 /// | the search runs out of steps / time | its `budget_exceeded` / `timeout` |
 /// | an expansion exceeds `max_expansion_bytes` | `limit_exceeded` |
-/// | a comment would be dropped and `!allow_comment_loss` | `comment_loss`, no edits; the message gives the count and says to retry with comment loss allowed or to capture the comment's region |
+/// | a comment would be dropped and `!allow_comment_loss` | `comment_loss`, no edits; the message gives the count and says to capture the comment's region or to narrow the pattern |
 /// | a grouping parenthesis would be needed for a capture that is not an expression (statement, type, pattern, …) so the substitution breaks the tree | `gate_failed` ("the replacement cannot place this capture here"), no edits |
 /// | otherwise | `Ok` |
 ///
@@ -255,7 +255,9 @@ pub fn rewrite_file(
                 "the rewrite would remove {} comment(s) that are not part of any capture",
                 comments_dropped.len()
             ),
-            "retry with comment loss allowed, or capture the region around the comment so it is copied",
+            // No tool surface lets a caller allow comment loss, so the advice names only what a
+            // caller can actually do.
+            "capture the region around the comment so it is copied, or narrow the pattern so the comment lies outside every match",
         ));
     }
 

@@ -56,7 +56,7 @@ pub struct SearchArgs {
 /// Footer lines, each only when applicable, in this order:
 ///
 /// ```text
-/// [truncated: showing <limit> matches, more exist; narrow `paths`, add a `rule` or raise `limit`]
+/// [truncated: showing <limit> matches, more exist; narrow `paths`, make the pattern more specific or raise `limit`]
 /// [syntax errors: <rel> (<k>)[, <rel> (<k>)...]]            (searched files that did not parse cleanly; at most 10, then ", and <M> more")
 /// [skipped: <a> ignored, <b> links, <c> special, <d> unsupported language, <e> other language, <f> too large, <g> not utf-8, <h> unreadable]   (only nonzero parts)
 /// [walk truncated at <max_scan_files> files; narrow `paths`]
@@ -418,7 +418,7 @@ fn render(
 
     if truncated {
         out.push_str(&format!(
-            "[truncated: showing {} matches, more exist; narrow `paths`, add a `rule` or raise `limit`]\n",
+            "[truncated: showing {} matches, more exist; narrow `paths`, make the pattern more specific or raise `limit`]\n",
             args.limit
         ));
     }

@@ -46,7 +46,7 @@ pub struct UndoResult {
 /// | 2 | `plan_id` is not a full id | `invalid_args` |
 /// | 3 | no journal, and the plan IS still readable in the store | `plan_not_found`: **this plan was never applied**, or its journal was removed; either way there are no originals here, so there is nothing to undo and no retry will help |
 /// | 4 | no journal and no readable plan either | `plan_not_found`; nothing is written |
-/// | 5 | the journal does not verify | `plan_corrupt`; nothing is written |
+/// | 5 | the journal does not verify, or its plan cannot be authenticated: the journal's own plan copy is altered, or (for a journal written before the copy existed) the plan store no longer has the plan | `plan_corrupt`; nothing is written |
 /// | 6 | state `applied` (**fresh undo**): some `orig/<n>` does not hash to `pre_hash` | `plan_corrupt`; **nothing is written** — all originals are verified up front, before the first write, so an untrustworthy original can never reach a file |
 /// | 7 | state `undoing` (**resumed undo**): an `orig/<n>` does not hash to `pre_hash` | `plan_corrupt` for that file, raised inside its `restore_one`; files restored before it stay restored and the journal stays `undoing`. E-8 allows resuming, and each file is still verified against `pre_hash` before it is written, so this differs from row 6 only in what was already done |
 /// | 8 | the apply lock is not obtained within `lock_timeout` | `busy` |
@@ -69,8 +69,10 @@ pub struct UndoResult {
 /// taxonomy is not this function's to prune), but no undo path emits it.
 ///
 /// The defaults explain how rare row 3 is beside row 4: `plan_ttl_minutes` = 15 and
-/// `journal_retention_days` = 7, so a journal removed for AGE always outlives its plan, and by the
-/// time anyone asks, the plan has been gone for a week. Row 4 is the common answer.
+/// `journal_retention_days` = 7, so a journal removed for AGE always outlives its plan in the plan
+/// store, and by the time anyone asks, the plan has been gone for a week. Row 4 is the common
+/// answer. While the journal exists the undo does not depend on the plan store at all: the journal
+/// carries its own copy of the plan, so the undo window is the journal's retention.
 ///
 /// ## Semantics
 /// - **Direction comes from the journal, not the caller**: an `undoing` journal is *completed*, not
@@ -121,21 +123,10 @@ pub fn undo(ctx: &ApplyContext<'_>, plan_id: &str) -> Result<UndoResult, ToolErr
 
     // Re-read under the lock: another process may have finished an undo between the two reads.
     let manifest = journal_of(ctx, plan_id)?;
-    // E-16: bind the journal to the plan before trusting its state field. The undo runs while the
-    // plan is in use, so it is always readable here — and if it is not, the journal is not
-    // something this call may rewrite a state of.
-    let plan = ctx
-        .plans
-        .get_for_read(plan_id)
-        .map(|(p, _)| p)
-        .map_err(|_| {
-            ToolError::new(
-                ErrorCode::PlanCorrupt,
-                format!("the plan of journal {plan_id} is no longer readable, so it cannot be undone"),
-                "The journal's originals are intact; restore the plan from its own bytes, then retry.",
-            )
-        })?;
-    manifest.check_bound_to(&plan)?;
+    // E-16: bind the journal to the plan before trusting its state field. The plan comes from the
+    // copy the journal keeps, so an undo works for as long as the journal is retained, not only
+    // while the plan store still holds the plan (its TTL is minutes, the journal's is days).
+    let plan = recovery_plan(ctx, &manifest)?;
 
     if manifest.state == JournalState::Undoing {
         // An interrupted undo: finish the direction the user already asked for. The executor and the
@@ -213,7 +204,7 @@ pub fn undo(ctx: &ApplyContext<'_>, plan_id: &str) -> Result<UndoResult, ToolErr
 // These three are the ones already used by the apply/recovery shell, re-used rather than rewritten:
 // a second restoration path would be a second set of bugs (and the ticket forbids it).
 
-use crate::apply::{current_hashes, restore_one};
+use crate::apply::{current_hashes, recovery_plan, restore_one};
 
 /// A restore failed for an ordinary I/O reason: say what was already restored, so a person knows
 /// where the undo stopped. The journal stays `undoing`, and `recover` finishes the job.

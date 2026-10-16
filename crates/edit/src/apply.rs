@@ -578,17 +578,22 @@ fn rollback_journal(ctx: &ApplyContext<'_>, plan_id: &str) -> Result<(), ToolErr
     recover_one(ctx, &m).map(|_| ())
 }
 
-/// The canonical bytes of the plan a journal belongs to, read from the plan store and verified
-/// against the journal's `plan_digest` (E-16).
+/// The plan a journal belongs to, verified against the journal's `plan_digest` (E-16).
 ///
-/// A non-terminal journal is, by definition, one whose apply or undo was interrupted — and both
-/// are in flight while the plan is still in use, so the plan is still in the store (its TTL is 15
-/// minutes by default, and [`crate::apply`] holds a use guard for the whole write section). If the
-/// plan cannot be read, the journal cannot be authenticated and must not be touched: reporting
-/// `plan_corrupt` is the honest answer, because the alternative — acting on the state field alone —
-/// is exactly the defect this check exists to close. The error says which of the two it is, so the
-/// caller can tell "evicted or expired, and there are still originals to restore" from "rewritten".
-fn recovery_plan(ctx: &ApplyContext<'_>, m: &Manifest) -> Result<Plan, ToolError> {
+/// The journal keeps its own copy of the plan ([`crate::JournalStore::read_plan`]), so a journal
+/// can be authenticated for as long as it is kept: an undo a week after the apply works although
+/// the plan store dropped the plan when its TTL ran out. The copy is checked like any stored plan
+/// - its bytes must hash to the plan id - and then bound to the manifest here.
+///
+/// A journal written before the copy existed has none, and for those the plan store is the only
+/// source, as it used to be. If it cannot be read there either, the journal cannot be
+/// authenticated and must not be touched: `plan_corrupt` is the honest answer, because acting on
+/// the state field alone is exactly the defect this check exists to close.
+pub(crate) fn recovery_plan(ctx: &ApplyContext<'_>, m: &Manifest) -> Result<Plan, ToolError> {
+    if let Some(plan) = ctx.journals.read_plan(&m.plan_id)? {
+        m.check_bound_to(&plan)?;
+        return Ok(plan);
+    }
     match ctx.plans.get_for_read(&m.plan_id) {
         Ok((plan, _meta)) => {
             m.check_bound_to(&plan)?;
@@ -601,7 +606,7 @@ fn recovery_plan(ctx: &ApplyContext<'_>, m: &Manifest) -> Result<Plan, ToolError
                     "the plan of journal {} is no longer readable, so its journal cannot be verified",
                     m.plan_id
                 ),
-                "Restore the plan from its own bytes if you still have them, then retry; the journal's originals are intact.",
+                "This journal was written by an older version that kept no copy of its plan, and the plan has since expired; restore the files from version control.",
             ))
         }
         Err(e) => Err(e),

@@ -75,6 +75,17 @@ comment), `replace_body`, `delete`, `insert_before`, `insert_after`. The symbol 
 resolve to exactly one node; otherwise the preview returns an `[ambiguous]` error
 listing the candidates so the caller can disambiguate (never a guess).
 
+`replace_body` replaces the `body` of the symbol's own definition node in the syntax
+tree, never the body of something nested inside it, so braces in a signature are not
+mistaken for the body. A container declaration whose grammar has no `body` field (a Go
+`type … struct`) uses the braces of its extent; any other symbol without a body is
+refused. In Python the body is the indented block and `text` is its statements: they
+are re-indented to the block (lines inside multi-line strings are left alone), a body
+written on the header's line becomes a block below it, and text that Python would
+reject for its indentation, or that has no statement, is refused at preview. That check
+is made here because the syntax gate cannot: the Python grammar recovers from
+indentation mistakes without reporting an error.
+
 The `text` a caller supplies is subject to the same rules as a rewrite's
 replacement: it is re-indented to the site and put into the file's existing line
 ending, so text pasted from another platform cannot leave a file with mixed line
@@ -333,11 +344,13 @@ points at a file outside it passes path containment (see T-02 in the security mo
 |---|---|
 | `manifest.json` | Plan id, state (`prepared`, `writing`, `applied`, `undoing`, `rolled_back`, `undone`), per-file pre/post hashes, progress, timestamps |
 | `orig/<n>` | Original bytes of each file, mode `0600`; its hash is recorded in the manifest and **checked against `pre_hash` before it is ever written back** |
+| `plan.json` | The plan's canonical bytes, mode `0600`. Undo and recovery authenticate the journal against this copy (it must hash to the plan id and match the manifest's `plan_digest`), so they do not depend on the plan store, whose plans expire after minutes. A journal written before this file existed has none, and the plan store is used for it |
 
 Retention: 7 days by default and a 256 MiB total cap; the oldest *terminal* journals
 are evicted first. A journal in a non-terminal state is never evicted — it is
-recovered. Eviction means undo is no longer possible for that plan, and the tool
-says so.
+recovered. The retention is the undo window: while the journal exists, undo works,
+even after the plan itself has expired. Eviction means undo is no longer possible for
+that plan, and the tool says so.
 
 ## Undo
 

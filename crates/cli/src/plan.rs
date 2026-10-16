@@ -133,13 +133,26 @@ pub fn show(ws: &str, state_dir: &Path, limits: &Limits, prefix: &str, out: &mut
         ));
     }
     out.line("");
-    out.line(
-        "This plan has not been applied. Applying it is a separate command that needs the full id.",
-    );
+    out.line(state_sentence(state));
     EXIT_OK
 }
 
-/// Which of `ready` / `applied` / `undone` a plan is, from its journal.
+/// The closing line of `plan show`, which must agree with the `state:` line above it.
+fn state_sentence(state: &str) -> &'static str {
+    match state {
+        "ready" => {
+            "This plan has not been applied. Applying it is a separate command that needs the full id."
+        }
+        "applied" => "This plan has been applied. `edit undo` with the full id reverts it.",
+        "undone" => "This plan was applied and then undone.",
+        "rolled_back" => {
+            "An apply of this plan was abandoned and rolled back; nothing of it is applied."
+        }
+        _ => "An apply or undo of this plan was interrupted; `edit recover` finishes it.",
+    }
+}
+
+/// The plan's journal state (`ready` when it has no journal), the same names `ast_plan_list` uses.
 fn state_of(state_dir: &Path, ws: &str, id: &str, limits: &Limits) -> &'static str {
     let clock = std::sync::Arc::new(SystemClock);
     let Ok(journals) = JournalStore::open(state_dir, ws, limits.clone(), clock) else {
@@ -147,11 +160,7 @@ fn state_of(state_dir: &Path, ws: &str, id: &str, limits: &Limits) -> &'static s
     };
     // A missing journal means never applied, which is the common case and is not an error here.
     match journals.load(id) {
-        Ok(m) => match m.state {
-            opencrayast_edit::JournalState::Applied => "applied",
-            opencrayast_edit::JournalState::Undone => "undone",
-            _ => "ready",
-        },
+        Ok(m) => m.state.as_str(),
         Err(_) => "ready",
     }
 }

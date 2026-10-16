@@ -92,11 +92,66 @@ pub fn call_tool(
     if !tool_callable(ctx.mode, entry) {
         return unknown_tool(id, name, ctx.mode);
     }
+    if let Err(e) = check_argument_names(entry, &arguments) {
+        return tool_result(id, &e.to_string(), true);
+    }
 
     match run(ctx, state_dir, name, &arguments) {
         Ok(text) => tool_result(id, &text, false),
         Err(e) => tool_result(id, &e.to_string(), true),
     }
+}
+
+/// Arguments the tool does not have are refused, not ignored.
+///
+/// The accepted names are the `properties` of the tool's published `inputSchema`, so the check
+/// cannot drift from what `tools/list` advertises. Ignoring an unknown name would make a typo
+/// (`include_doc` on `ast_outline`, which takes `include_docs`) or an option this server does not
+/// have (`allow_comment_loss`) look as if it had been applied. `rule` is left to the handlers of
+/// `ast_search` and `ast_edit_preview`, which refuse it with their own explanation.
+fn check_argument_names(entry: &ToolEntry, arguments: &Value) -> Result<(), ToolError> {
+    let Value::Object(args) = arguments else {
+        return Ok(());
+    };
+    let schema: Value = serde_json::from_str(entry.input_schema).unwrap_or(Value::Null);
+    let known: Vec<&str> = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|props| props.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    let handled_elsewhere =
+        |key: &str| key == "rule" && matches!(entry.name, "ast_search" | "ast_edit_preview");
+    let mut unknown: Vec<&str> = args
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !known.contains(key) && !handled_elsewhere(key))
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    unknown.sort_unstable();
+    let quoted: Vec<String> = unknown.iter().map(|k| format!("`{k}`")).collect();
+    let next = if known.is_empty() {
+        format!(
+            "{} takes no arguments; call it with an empty object.",
+            entry.name
+        )
+    } else {
+        let mut names: Vec<&str> = known.clone();
+        names.sort_unstable();
+        format!(
+            "Remove {}. {} accepts: {}.",
+            if unknown.len() == 1 { "it" } else { "them" },
+            entry.name,
+            names.join(", ")
+        )
+    };
+    let message = if unknown.len() == 1 {
+        format!("{} is not an argument of {}", quoted[0], entry.name)
+    } else {
+        format!("{} are not arguments of {}", quoted.join(", "), entry.name)
+    };
+    Err(ToolError::new(ErrorCode::InvalidArgs, message, next))
 }
 
 fn run(
@@ -1390,5 +1445,66 @@ mod tests {
                 "{name} must say the actionable thing — omit the field: {answered}"
             );
         }
+    }
+
+    /// An argument a tool does not have is refused with the list of the ones it does, so a typo
+    /// or an option this server lacks cannot look as if it had been applied.
+    #[test]
+    fn an_unknown_argument_is_refused_and_the_valid_names_are_listed() {
+        let ctx = ctx_for(Mode::ReadOnly);
+        // `ast_get` takes `include_doc`; `ast_outline` takes `include_docs`.
+        let answered = call(
+            &ctx,
+            "ast_outline",
+            json!({ "path": "boundary_root_marker.rs", "include_doc": true }),
+        );
+        assert!(answered.contains("\"isError\":true"), "{answered}");
+        assert!(
+            answered.contains("`include_doc` is not an argument of ast_outline"),
+            "{answered}"
+        );
+        assert!(
+            answered.contains("ast_outline accepts: depth, include_docs, kinds, limit, path."),
+            "{answered}"
+        );
+
+        let answered = call(
+            &ctx,
+            "ast_edit_preview",
+            json!({ "kind": "rewrite", "language": "rust", "pattern": "x", "replacement": "y",
+                    "paths": ["boundary_root_marker.rs"], "allow_comment_loss": true,
+                    "dry": false }),
+        );
+        assert!(
+            answered.contains("`allow_comment_loss`, `dry` are not arguments of ast_edit_preview"),
+            "{answered}"
+        );
+
+        let answered = call(&ctx, "ast_info", json!({ "verbose": true }));
+        assert!(
+            answered.contains("ast_info takes no arguments; call it with an empty object."),
+            "{answered}"
+        );
+    }
+
+    /// The check is against the published schema, so every documented argument still passes it,
+    /// and `rule` keeps its own, more specific refusal.
+    #[test]
+    fn documented_arguments_pass_and_rule_keeps_its_own_refusal() {
+        let ctx = ctx_for(Mode::ReadOnly);
+        let answered = call(
+            &ctx,
+            "ast_outline",
+            json!({ "path": "boundary_root_marker.rs", "depth": 2, "kinds": ["fn"],
+                    "include_docs": true, "limit": 5 }),
+        );
+        assert!(!answered.contains("is not an argument"), "{answered}");
+        let answered = call(
+            &ctx,
+            "ast_search",
+            json!({ "pattern": "fn $N() { $B }", "rule": { "kind": "fn" } }),
+        );
+        assert!(answered.contains("`rule` is not accepted"), "{answered}");
+        assert!(!answered.contains("is not an argument"), "{answered}");
     }
 }

@@ -3,6 +3,8 @@
 //!
 //! ```text
 //! <plan-id>/manifest.json   canonical Manifest bytes, mode 0600
+//! <plan-id>/plan.json       the plan's canonical bytes, mode 0600 (journals written before this
+//!                           file existed do not have it; see [`JournalStore::read_plan`])
 //! <plan-id>/orig/<n>        the original bytes of file n (same order as the manifest), mode 0600
 //! .tmp-<random>/            a journal being built, or one being deleted; never read as a journal
 //! ```
@@ -27,6 +29,9 @@ use opencrayast_core::statedir::ensure_state_dir;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+/// The name of the plan copy inside a journal directory.
+const PLAN_FILE: &str = "plan.json";
 
 /// The journal store of one workspace.
 pub struct JournalStore {
@@ -191,7 +196,13 @@ impl JournalStore {
             updated_at: now,
         };
         let manifest_bytes = manifest.canonical_bytes();
-        let new_size = orig_bytes.saturating_add(manifest_bytes.len() as u64);
+        // The plan travels with its journal, so undo and recovery can authenticate the journal
+        // (E-16) for as long as the journal is kept, not only for the plan's short TTL in the
+        // plan store.
+        let plan_bytes = plan.canonical_bytes();
+        let new_size = orig_bytes
+            .saturating_add(manifest_bytes.len() as u64)
+            .saturating_add(plan_bytes.len() as u64);
         let total_cap = self
             .limits
             .journal_max_total_mib
@@ -226,6 +237,7 @@ impl JournalStore {
             for (i, o) in originals.iter().enumerate() {
                 write_exclusive(&orig_dir.join(i.to_string()), o)?;
             }
+            write_exclusive(&tmp.join(PLAN_FILE), &plan_bytes)?;
             write_exclusive(&tmp.join("manifest.json"), &manifest_bytes)?;
             opencrayast_core::fsio::fsync_dir(&orig_dir)?;
             opencrayast_core::fsio::fsync_dir(&tmp)?;
@@ -437,6 +449,76 @@ impl JournalStore {
             ));
         }
         Ok(bytes)
+    }
+
+    /// The plan this journal was written for, from the copy kept inside the journal.
+    ///
+    /// | Condition | Result |
+    /// |---|---|
+    /// | not a full id | `invalid_args` |
+    /// | no such journal, or the journal does not verify | as [`JournalStore::load`] |
+    /// | the journal predates the plan copy (no `plan.json`) | `Ok(None)`: the caller falls back to the plan store |
+    /// | the copy is a symlink, not regular, not private, or not owned by the current user | `plan_corrupt` |
+    /// | its bytes do not parse, or do not hash to the journal's plan id (`Plan::parse_named`) | `plan_corrupt` (another refusal from the parser, such as `limit_exceeded`, is passed on as itself) |
+    /// | the plan is bound to another workspace | `wrong_workspace` |
+    /// | its canonical bytes do not match the manifest's `plan_digest` | `plan_corrupt` |
+    ///
+    /// The caller still binds the manifest to the returned plan (`Manifest::check_bound_to`)
+    /// before acting on the journal; this only guarantees the bytes are the plan with this id.
+    pub fn read_plan(&self, plan_id: &str) -> Result<Option<Plan>, ToolError> {
+        if !is_full_plan_id(plan_id) {
+            return Err(ToolError::new(
+                ErrorCode::InvalidArgs,
+                "journal operations require a full plan id",
+                "Pass the full p-<26 base32> plan id.",
+            ));
+        }
+        self.verify_dirs()?;
+        let m = self.load_verified(plan_id)?;
+        let path = self.journal_path(plan_id).join(PLAN_FILE);
+        match fs::symlink_metadata(&path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            _ => {}
+        }
+        verify_private_file(&path).map_err(|e| {
+            if e.code == ErrorCode::IoError {
+                corrupt(
+                    "the journal's plan copy is unreadable",
+                    "Refuse the journal; its plan cannot be verified.",
+                )
+            } else {
+                e
+            }
+        })?;
+        let bytes = fs::read(&path).map_err(|_| {
+            corrupt(
+                "the journal's plan copy is unreadable",
+                "Refuse the journal; its plan cannot be verified.",
+            )
+        })?;
+        // Only a `plan_corrupt` from the parser means the bytes are not this plan; anything else
+        // (a plan limit an operator has since lowered, say) is reported as itself, not as an
+        // alteration that did not happen.
+        let plan = Plan::parse_named(plan_id, &bytes, &self.limits).map_err(|e| {
+            if e.code == ErrorCode::PlanCorrupt {
+                corrupt(
+                    "the journal's plan copy is not the plan with this id",
+                    "Refuse the journal; its plan copy was altered.",
+                )
+            } else {
+                e
+            }
+        })?;
+        // E-11, as the plan store checks it: a plan bound to another workspace is never acted on
+        // here, whatever directory it was found in.
+        plan.check_workspace(&self.workspace_id)?;
+        if ContentHash::of(&plan.canonical_bytes()) != m.plan_digest {
+            return Err(corrupt(
+                "the journal's plan copy does not match the manifest's plan_digest",
+                "Refuse the journal; its manifest is not the one written for this plan.",
+            ));
+        }
+        Ok(Some(plan))
     }
 
     /// Every journal, ascending by plan id, plus the ids of directories that exist but do not

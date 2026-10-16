@@ -571,3 +571,34 @@ fn parity1_06_both_surfaces_see_a_store_that_changed_between_them() {
     assert_eq!(code, 0, "{text}");
     assert!(text.contains(&first), "{text}");
 }
+
+/// `plan show` closes with a sentence that agrees with its own `state:` line. It used to say
+/// "This plan has not been applied" whatever the journal said.
+#[test]
+fn plan_show_closing_line_follows_the_journal_state() {
+    let w = World::new();
+    let id = w.preview("src/a.ts", "log(1);\n", "log($$$ARGS)", "log2($$$ARGS)");
+    let (_, ready) = drive(&w.root, &["plan", "show", &id]);
+    assert!(ready.contains("state:   ready"), "{ready}");
+    assert!(ready.contains("This plan has not been applied."), "{ready}");
+
+    // Journal the plan and walk it to `applied`, the states an apply goes through.
+    let (plan, _) = w.plans.get_for_read(&id).unwrap();
+    let original = std::fs::read(w.root.join("src/a.ts")).unwrap();
+    w.journals.create(&plan, &[original]).unwrap();
+    for state in [
+        opencrayast_edit::JournalState::Writing,
+        opencrayast_edit::JournalState::Applied,
+    ] {
+        let progress = if state == opencrayast_edit::JournalState::Applied {
+            1
+        } else {
+            0
+        };
+        w.journals.set_state(&id, state, progress, &plan).unwrap();
+    }
+    let (_, applied) = drive(&w.root, &["plan", "show", &id]);
+    assert!(applied.contains("state:   applied"), "{applied}");
+    assert!(applied.contains("This plan has been applied."), "{applied}");
+    assert!(!applied.contains("has not been applied"), "{applied}");
+}

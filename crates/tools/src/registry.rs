@@ -259,13 +259,14 @@ const CATALOG: [ToolEntry; 11] = [
         // Read mode, `readOnlyHint: false`: it writes the plan store and never the workspace.
         name: "ast_edit_preview",
         description: "Preview an edit as a plan: the diff, the plan id, and what applying it \
-                      would change. THIS CALL PERSISTS the plan under \
-                      `<workspace>/.opencrayast` — the workspace's files are never modified, but \
-                      the returned plan_id only exists because a file was written, which is why \
+                      would change. THIS CALL PERSISTS the plan in the user's state directory, \
+                      outside the workspace — the workspace's files are never modified, but the \
+                      returned plan_id only exists because a file was written, which is why \
                       readOnlyHint is false. kind=rewrite needs language, pattern, replacement \
                       and paths; kind=symbol needs path, symbol and operation, plus text for \
-                      replace, replace_body, insert_before and insert_after (text must include \
-                      the surrounding braces for replace_body, and is unused by delete).",
+                      replace, replace_body, insert_before and insert_after (for replace_body, \
+                      text must include the surrounding braces, or in Python be the body's \
+                      statements; text is unused by delete).",
         mode: Mode::ReadOnly,
         annotations: READ_PLAN_STORE_WRITE,
         input_schema: PREVIEW_SCHEMA,
@@ -508,17 +509,23 @@ mod tests {
     /// The description of `ast_edit_preview` must say that the call persists a plan, and where.
     ///
     /// `readOnlyHint: false` is the annotation that says it; nothing said *what* is written or
-    /// *where*. The path — the state directory — appeared in no description, in no `Next:`, and
-    /// (until this change) was even described in `docs/TOOLS.md` as "never the workspace", which is
-    /// true of workspace *content* and false of the tree: the store lands inside the user's tree. A
-    /// client that honours `destructiveHint: false` to skip confirmation deserves to know the
-    /// call creates a file before it makes one.
+    /// *where*. A client that honours `destructiveHint: false` to skip confirmation deserves to
+    /// know the call creates a file before it makes one, and where that file goes: the user's
+    /// state directory, outside the workspace. (The description used to name
+    /// `<workspace>/.opencrayast`, a location the store left long ago, so it also must not come
+    /// back.)
     #[test]
     fn ast_edit_preview_discloses_that_it_persists_a_plan_and_where() {
         let entry = find_tool("ast_edit_preview").expect("ast_edit_preview is catalogued");
         assert!(
-            entry.description.contains(".opencrayast"),
+            entry.description.contains("state directory")
+                && entry.description.contains("outside the workspace"),
             "the description must name where the plan is written: {}",
+            entry.description
+        );
+        assert!(
+            !entry.description.contains(".opencrayast"),
+            "the description must not name the old in-workspace location: {}",
             entry.description
         );
         assert!(

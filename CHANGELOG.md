@@ -8,6 +8,38 @@ numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 
 ### Fixed
 
+- `ast_undo` works for the whole journal retention (7 days by default), as the apply
+  output says. It used to need the plan from the plan store, which drops a plan 15
+  minutes after the preview, so a later undo was refused with `plan_corrupt`. Each
+  journal now keeps a verified copy of its plan; recovery uses it too. Journals written
+  by earlier versions fall back to the plan store as before.
+- `ast_plan_show` after an apply renders the planned diff against the original kept in
+  the journal. It used to lay the edit offsets over the applied file: a same-length edit
+  showed the new text on both sides, and any other edit showed no diff. A file that
+  changed since the preview is now detected by hash, not by size.
+- `replace_body` finds the body of the symbol's own definition in the syntax tree instead
+  of taking the first `{` and the last `}`, so braces in a signature, or the body of a
+  method nested in an object literal, are no longer mistaken for it. A function without a
+  body is refused instead of having its signature types replaced. Python is supported:
+  the text is the body's statements, re-indented to the body, and text Python would
+  reject for its indentation is refused, since the syntax gate cannot see those errors.
+- `opencrayast plan show` ends with a line that matches the plan's state; it used to say
+  "This plan has not been applied" for every plan, and it reported interrupted states as
+  `ready`.
+- `tools/call` refuses arguments a tool does not have, naming the accepted ones, instead
+  of ignoring them.
+- The rewrite preview says when nested matches were left unchanged and when a captured
+  expression was parenthesised.
+- The `ast_edit_preview` description names the real plan location (the user's state
+  directory, outside the workspace).
+- Hints that could not be followed are corrected: `comment_loss` no longer suggests an
+  option no surface offers, the search truncation footer no longer suggests a `rule`, and
+  the preview's CLI hint includes `--write`.
+- The apply output's `Next:` line reads as one sentence again.
+- `docs/TOOLS.md`: `ast_info` prints six lines (the `config` line was undocumented), and
+  `journal_missing` is documented as reserved, since an undo with no journal answers
+  `plan_not_found`.
+
 - The `audit` workflow no longer fails on every run after the first: it restores
   `~/.cargo/bin` from cache, and a bare `cargo install cargo-audit` then exited with
   "binary already exists". It now installs only when the binary is absent.

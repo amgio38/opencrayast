@@ -7,6 +7,6 @@ pub mod outline;
 
 pub use outline::{
     OutlineOptions, Symbol, SymbolKind, SymbolText, collect_all_counting_discards, find_symbols,
-    outline, symbol_text,
+    outline, symbol_body_range, symbol_text,
 };
 pub mod pattern;

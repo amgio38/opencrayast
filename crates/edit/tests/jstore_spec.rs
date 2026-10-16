@@ -141,12 +141,21 @@ fn create_lays_out_the_journal_privately_and_returns_a_prepared_manifest() {
     );
     assert_eq!(
         files_in(&d),
-        vec!["manifest.json".to_string(), "orig".to_string()]
+        vec![
+            "manifest.json".to_string(),
+            "orig".to_string(),
+            "plan.json".to_string()
+        ]
     );
     assert_eq!(
         fs::read(d.join("manifest.json")).unwrap(),
         m.canonical_bytes()
     );
+    // The journal carries the plan it was written for, privately, as its canonical bytes, and
+    // hands it back verified.
+    assert_eq!(fs::read(d.join("plan.json")).unwrap(), p.canonical_bytes());
+    assert_eq!(mode(&d.join("plan.json")), 0o600);
+    assert_eq!(s.read_plan(&m.plan_id).unwrap(), Some(p.clone()));
     assert_eq!(
         Manifest::parse(&fs::read(d.join("manifest.json")).unwrap()).unwrap(),
         m
@@ -308,7 +317,11 @@ fn set_state_walks_the_state_machine_durably_and_refuses_everything_else() {
     assert_eq!(mode(&path), 0o600);
     assert_eq!(
         files_in(&f.jdir().join(&id)),
-        vec!["manifest.json".to_string(), "orig".to_string()]
+        vec![
+            "manifest.json".to_string(),
+            "orig".to_string(),
+            "plan.json".to_string()
+        ]
     );
     // illegal transitions and out-of-range progress are caller bugs: refused, nothing written
     let before = fs::read(&path).unwrap();

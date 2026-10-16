@@ -376,7 +376,7 @@ Engine codes that have no distinct JSON-RPC code all travel as `-32602` or `-328
 | `busy` | `-32803` | Another apply holds the lock; retry shortly. |
 | `config_untrusted` | `-32602` | The operator's configuration file exists but cannot be trusted — wrong owner, wrong permissions, or not a regular file. Raised while the server starts, so it is reported as a startup refusal rather than through a method; listed here so the code has one meaning on both surfaces. |
 | `plan_not_found`, `plan_expired` | `-32602` | |
-| `journal_missing` | `-32602` | Retention expired: the plan is still in the store, but its originals are gone, so undo can no longer restore them. |
+| `journal_missing` | `-32602` | Reserved; no current path emits it. An undo whose journal is gone answers `plan_not_found`. |
 | `internal` | `-32603` | A defect. Report it with the plan id; the message carries no source text. |
 | `replaced_not_durable` | `-32803` | The write happened and may not survive a crash; not in the current tool output surface, listed for completeness. |
 

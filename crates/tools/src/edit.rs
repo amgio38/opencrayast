@@ -161,7 +161,7 @@ pub struct RecoverArgs;
 /// -  console.log("start", id)
 /// +  logger.debug("start", id)
 /// Next: review the diff, then apply with ast_edit_apply plan_id=p-7k2m9x4ab
-///       (write mode) or with `opencrayast edit apply p-7k2m9xq4ab` (CLI).
+///       (write mode) or with `opencrayast --write edit apply p-7k2m9xq4ab` (CLI).
 /// ```
 ///
 /// A request that matches nothing is a **successful** result with no plan id, no files and a
@@ -337,6 +337,23 @@ fn render_preview(ctx: &EditTools<'_>, outcome: &PreviewOutcome, searched: &str)
             if !outcome.summary.skipped.is_empty() {
                 out.line(skipped_line(&outcome.summary.skipped, &mut escapes));
             }
+            // Both are differences between what `ast_search` lists for the same pattern and what
+            // this plan changes, and neither shows up as such in the diff, so they are stated.
+            if outcome.summary.overlaps_dropped > 0 {
+                let n = outcome.summary.overlaps_dropped;
+                out.line(format!(
+                    "nested: {n} match{es} inside a larger match {verb} left unchanged (only the outermost match is rewritten)",
+                    es = if n == 1 { "" } else { "es" },
+                    verb = if n == 1 { "was" } else { "were" },
+                ));
+            }
+            if outcome.summary.wrapped > 0 {
+                let n = outcome.summary.wrapped;
+                out.line(format!(
+                    "parenthesised: a captured expression was wrapped in parentheses in {n} match{es} to keep its meaning",
+                    es = if n == 1 { "" } else { "es" },
+                ));
+            }
             if let Some(note) = &outcome.plan.request.note {
                 let (escaped, count) = escape_inline(note);
                 escapes.absorb(count);
@@ -349,7 +366,7 @@ fn render_preview(ctx: &EditTools<'_>, outcome: &PreviewOutcome, searched: &str)
             // the one line the caller cannot do without.
             let tail = format!(
                 "Next: review the diff, then apply with ast_edit_apply plan_id={id}\n\
-                 \x20     (write mode) or with `opencrayast edit apply {id}` (CLI).\n"
+                 \x20     (write mode) or with `opencrayast --write edit apply {id}` (CLI).\n"
             );
             // The extra eight bytes are the closing fence a cut hunk forces past the cap.
             out.reserve_for(tail.len() + 8);
@@ -613,8 +630,16 @@ pub fn ast_plan_show(ctx: &EditTools<'_>, args: &PlanShowArgs) -> Result<String,
     // two files must answer with one hunk, not one per file. So the hunks are collected across
     // the selected files first and sliced once.
     let mut all: Vec<(String, Hunk)> = Vec::new();
+    let plan_id = plan.id();
     for file in &selected {
-        match file_diff(ctx, file) {
+        // The journal keeps originals in the plan's file order, so the index is the file's
+        // position in the plan, not in the filtered selection.
+        let index = plan
+            .files
+            .iter()
+            .position(|f| f.path == file.path)
+            .unwrap_or(0);
+        match file_diff(ctx, &plan_id, index, file) {
             Ok(hunks) => all.extend(hunks.into_iter().map(|hunk| (file.path.clone(), hunk))),
             // A file that cannot be diffed is named, not fatal: the summary above is still true
             // and the caller learns why instead of getting silence.
@@ -658,7 +683,7 @@ pub fn ast_plan_show(ctx: &EditTools<'_>, args: &PlanShowArgs) -> Result<String,
     }))
 }
 
-/// The hunks for one planned file: its current bytes against the bytes its edits produce.
+/// The hunks for one planned file: its original bytes against the bytes its edits produce.
 ///
 /// Derived from the plan's **edit list**, not from a text comparison, and that is not a second
 /// implementation of the diff preview builds. Preview compares two texts because its edit list has
@@ -666,8 +691,25 @@ pub fn ast_plan_show(ctx: &EditTools<'_>, args: &PlanShowArgs) -> Result<String,
 /// list. Here the edit list **is** the stored plan, so the changed ranges are known exactly and
 /// nothing has to be inferred - which also means this cannot disagree with what apply will write.
 ///
+/// The edit offsets are positions in the file **before** the plan, so they may only be laid over
+/// those exact bytes. Which bytes those are is decided by hash, not by size:
+///
+/// | The file now hashes to | Diffed against |
+/// |---|---|
+/// | the plan's `pre_hash` (not applied yet) | the file as it is |
+/// | the plan's `post_hash` (applied) | the original the journal kept for undo |
+/// | anything else | nothing: `stale_plan`, the file changed since the preview |
+///
+/// Comparing sizes alone let an applied same-length edit be laid over its own result, which
+/// showed the new text on both sides of the diff.
+///
 /// The file is read through the boundary, like everywhere else, and is not modified.
-fn file_diff(ctx: &EditTools<'_>, file: &PlanFile) -> Result<Vec<Hunk>, ToolError> {
+fn file_diff(
+    ctx: &EditTools<'_>,
+    plan_id: &str,
+    index: usize,
+    file: &PlanFile,
+) -> Result<Vec<Hunk>, ToolError> {
     let resolved = ctx.tools.boundary.resolve_read(&file.path)?;
     let (handle, _identity) = ctx.tools.boundary.open_read(&resolved)?;
     let mut buf = Vec::new();
@@ -684,14 +726,33 @@ fn file_diff(ctx: &EditTools<'_>, file: &PlanFile) -> Result<Vec<Hunk>, ToolErro
                 )
             })?;
     }
-    let source = opencrayast_core::text::decode_utf8(&buf, ctx.tools.limits.max_file_bytes)?;
-    if source.len() as u64 != file.pre_size {
+    let current = opencrayast_core::hash::ContentHash::of(&buf);
+    let original = if current == file.pre_hash {
+        buf
+    } else if current == file.post_hash {
+        // Only a missing journal means "no longer on record"; an original that fails its own
+        // checks is reported as what it is, never hidden behind a benign answer.
+        ctx.journals
+            .read_original(plan_id, index)
+            .map_err(|e| match e.code {
+                ErrorCode::PlanNotFound => ToolError::new(
+                    ErrorCode::AlreadyApplied,
+                    format!(
+                        "{} already holds this plan's result, and its original is no longer on record.",
+                        file.path
+                    ),
+                    "The plan was applied; read the current code with ast_get or ast_outline.",
+                ),
+                _ => e,
+            })?
+    } else {
         return Err(ToolError::new(
             ErrorCode::StalePlan,
             format!("{} changed since the plan was previewed.", file.path),
             "Run ast_edit_preview again to see the file as it is now.",
         ));
-    }
+    };
+    let source = opencrayast_core::text::decode_utf8(&original, ctx.tools.limits.max_file_bytes)?;
     Ok(hunks_from_edits(source, &file.edits))
 }
 
@@ -942,10 +1003,13 @@ fn render_apply(ctx: &EditTools<'_>, result: &ApplyResult) -> String {
         "Undo with ast_undo plan_id={} (kept {} days).",
         result.plan_id, ctx.tools.limits.journal_retention_days
     ));
-    out.line(format!(
-        "Next: verify the semantics — for example {}",
-        result.suggestion
-    ));
+    // The wording is fixed rather than built from `result.suggestion`: that string is a whole
+    // sentence of its own, and splicing it into this one produced a line that read as two
+    // half-sentences. The documented output (`docs/TOOLS.md` §`ast_edit_apply`) is this one.
+    out.line(
+        "Next: verify the semantics — for example run the language server's diagnostics"
+            .to_string(),
+    );
     out.line("      (lsp_diagnostics) on the changed files.".to_string());
     out.finish(&escapes, || {
         "[truncated; the plan is applied; ast_plan_show lists what changed]".to_string()

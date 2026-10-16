@@ -361,3 +361,107 @@ pub fn symbol_text(
         text: lines[first - 1..last].join("\n"),
     })
 }
+
+/// The byte range of a symbol's body, found in the syntax tree rather than by scanning text.
+///
+/// The body is the `body` field of the symbol's **own definition node**, never of something
+/// nested inside it: a method in an object literal, a closure in a default value, a lambda in a
+/// decorator argument. The definition node is the node that spans the symbol's extent (the last
+/// such node when attributes or decorators are siblings of the item they annotate), seen through
+/// the wrappers that carry a definition without being one:
+///
+/// - `export_statement` → its `declaration`;
+/// - `decorated_definition` (Python) → its `definition`;
+/// - `lexical_declaration` / `variable_declaration` with a single declarator whose value is a
+///   function, an arrow function or a class (`const f = () => { … }`) → that value.
+///
+/// `None` when that node has no `body` field (a Go type declaration, a constant, a method
+/// signature without a body), and for Python when the body is not an indented `block`. The
+/// caller answers those in its own terms.
+pub fn symbol_body_range(parsed: &ParsedFile, symbol: &Symbol) -> Option<(usize, usize)> {
+    if symbol.end_byte <= symbol.start_byte {
+        return None;
+    }
+    let inside = |n: &tree_sitter::Node<'_>| {
+        n.start_byte() >= symbol.start_byte && n.end_byte() <= symbol.end_byte
+    };
+    let top = parsed
+        .tree
+        .root_node()
+        .descendant_for_byte_range(symbol.start_byte, symbol.end_byte)?;
+    // Candidates for the definition node, deepest first: the smallest node spanning the extent and
+    // the ancestors with exactly the same span. The deepest one that is (or wraps) a definition
+    // wins, so a method that is the only statement of its class is not mistaken for the class
+    // body that has the same span.
+    let mut candidates = Vec::new();
+    if inside(&top) {
+        let mut node = top;
+        candidates.push(node);
+        while let Some(parent) = node.parent() {
+            if parent.start_byte() == node.start_byte() && parent.end_byte() == node.end_byte() {
+                candidates.push(parent);
+                node = parent;
+            } else {
+                break;
+            }
+        }
+    } else {
+        // Attributes and decorators can be siblings of the item; the item is the last named
+        // node inside the extent.
+        let mut cursor = top.walk();
+        let last = top
+            .named_children(&mut cursor)
+            .filter(|c| inside(c))
+            .last()?;
+        candidates.push(last);
+    }
+    let body = candidates
+        .into_iter()
+        .find_map(|node| definition_body(unwrap_definition(node)))?;
+    if symbol.language == Language::Python && body.kind() != "block" {
+        return None;
+    }
+    Some((body.start_byte(), body.end_byte()))
+}
+
+/// The `body` field of a definition node.
+fn definition_body(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    node.child_by_field_name("body")
+}
+
+/// See through the wrappers that carry a definition without being one (see
+/// [`symbol_body_range`]).
+fn unwrap_definition(mut node: tree_sitter::Node<'_>) -> tree_sitter::Node<'_> {
+    for _ in 0..4 {
+        let next = match node.kind() {
+            "export_statement" => node.child_by_field_name("declaration"),
+            "decorated_definition" => node.child_by_field_name("definition"),
+            "lexical_declaration" | "variable_declaration" => {
+                let mut cursor = node.walk();
+                let declarators: Vec<_> = node
+                    .named_children(&mut cursor)
+                    .filter(|c| c.kind() == "variable_declarator")
+                    .collect();
+                match declarators.as_slice() {
+                    [only] => only.child_by_field_name("value").filter(|v| {
+                        matches!(
+                            v.kind(),
+                            "arrow_function"
+                                | "function"
+                                | "function_expression"
+                                | "generator_function"
+                                | "class"
+                        )
+                    }),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        match next {
+            Some(n) => node = n,
+            None => break,
+        }
+    }
+    node
+}

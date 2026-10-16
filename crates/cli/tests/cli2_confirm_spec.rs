@@ -765,8 +765,10 @@ fn cli2_c14_the_docs_document_the_gate() {
         let path = std::path::Path::new(&docs).join(file);
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        // `edit apply`, not `opencrayast edit apply`: the docs spell the command with its global
+        // `--write` flag in front (`opencrayast --write edit apply`), which is the form that works.
         assert!(
-            text.contains("opencrayast edit apply"),
+            text.contains("edit apply"),
             "{file} no longer mentions the apply command; this test needs updating"
         );
         assert!(

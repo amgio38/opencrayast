@@ -194,7 +194,7 @@ is treated as untrusted input at apply time (full-id requirement, recomputed has
 CLI confirmation), not as a trusted channel. That enables the
 **human-in-the-loop path with zero write capability in the agent's process**: the
 agent previews, a person reviews with `opencrayast edit show <plan-id>`, and the
-person applies with `opencrayast edit apply <plan-id>`.
+person applies with `opencrayast --write edit apply <plan-id>`.
 
 That last command is itself a gate rather than a writer: it lists the files that will
 change and asks, and where there is no terminal to ask — a pipe, cron, CI — it refuses

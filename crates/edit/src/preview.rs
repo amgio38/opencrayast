@@ -63,9 +63,9 @@ use opencrayast_core::hash::ContentHash;
 use opencrayast_core::limits::Limits;
 use opencrayast_core::walk::{WalkOptions, walk};
 use opencrayast_lang::{Language, ParseBudget, ParsedFile, parse};
-use opencrayast_query::outline::Symbol;
+use opencrayast_query::outline::{Symbol, SymbolKind};
 use opencrayast_query::pattern::{CompiledRule, Pattern, Rule, SearchBudget};
-use opencrayast_query::{find_symbols, symbol_text};
+use opencrayast_query::{find_symbols, symbol_body_range, symbol_text};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -275,6 +275,13 @@ pub struct RiskSummary {
     pub skipped_ignored: usize,
     /// Entries the walk refused (links, special files, unlistable directories).
     pub skipped_special: usize,
+    /// Matches in planned files that were left unchanged because a larger match containing them
+    /// was rewritten (the outermost match wins). A search with the same pattern lists them, so a
+    /// reviewer comparing the two needs to be told.
+    pub overlaps_dropped: u64,
+    /// Rewritten matches in planned files where a captured expression was wrapped in grouping
+    /// parentheses so that substituting it did not change its meaning.
+    pub wrapped: u64,
 }
 
 /// The kind of one diff line. The renderer adds the marker; this module only says what a line
@@ -390,6 +397,8 @@ pub fn preview(ctx: &PreviewContext<'_>, req: &EditRequest) -> Result<PreviewOut
     let mut matches = 0u64;
     let mut gate_problems: Vec<String> = Vec::new();
     let mut files_with_pre_errors = 0usize;
+    let mut overlaps_dropped = 0u64;
+    let mut wrapped = 0u64;
 
     for candidate in &candidates {
         let loaded = match load(ctx, candidate) {
@@ -427,6 +436,8 @@ pub fn preview(ctx: &PreviewContext<'_>, req: &EditRequest) -> Result<PreviewOut
         if outcome.file.pre_errors > 0 {
             files_with_pre_errors += 1;
         }
+        overlaps_dropped += outcome.overlaps_dropped;
+        wrapped += outcome.wrapped;
         planned.push(outcome.file);
         diffs.push(outcome.diff);
     }
@@ -454,6 +465,8 @@ pub fn preview(ctx: &PreviewContext<'_>, req: &EditRequest) -> Result<PreviewOut
         skipped,
         skipped_ignored: walk_ignored,
         skipped_special: walk_special,
+        overlaps_dropped,
+        wrapped,
     };
 
     let plan = Plan {
@@ -782,6 +795,10 @@ struct FileOutcome {
     file: PlanFile,
     diff: FileDiff,
     matches: u64,
+    /// Matches left unchanged because a larger match around them was rewritten.
+    overlaps_dropped: u64,
+    /// Rewritten matches in which a captured expression was parenthesised.
+    wrapped: u64,
 }
 
 /// `rewrite`: every match of the pattern, expanded and re-indented at its site.
@@ -847,7 +864,10 @@ fn rewrite_edits(
         },
     )?;
 
-    finish_file(ctx, loaded, outcome.edits, outcome.matches_found as u64)
+    let mut finished = finish_file(ctx, loaded, outcome.edits, outcome.matches_found as u64)?;
+    finished.overlaps_dropped = outcome.overlaps_dropped.len() as u64;
+    finished.wrapped = outcome.wrapped.len() as u64;
+    Ok(finished)
 }
 
 /// `symbol`: one named symbol, resolved to exactly one node or refused.
@@ -884,7 +904,13 @@ fn symbol_edits(
     }
 
     let found = &candidates[0];
-    let edit = symbol_edit(*operation, found, &loaded.text, text.as_deref())?;
+    let edit = symbol_edit(
+        *operation,
+        found,
+        &loaded.parsed,
+        &loaded.text,
+        text.as_deref(),
+    )?;
     finish_file(ctx, loaded, vec![edit], 1)
 }
 
@@ -928,9 +954,15 @@ fn ambiguous(symbol: &str, candidates: &[Symbol]) -> ToolError {
 fn symbol_edit(
     operation: SymbolOp,
     symbol: &Symbol,
+    parsed: &ParsedFile,
     source: &str,
     text: Option<&str>,
 ) -> Result<Edit, ToolError> {
+    // A Python body has no delimiters: it is replaced as an indented block, re-indented and
+    // checked against Python's indentation rules, which the syntax gate cannot see.
+    if operation == SymbolOp::ReplaceBody && symbol.language == Language::Python {
+        return python_body_edit(parsed, source, symbol, text.unwrap_or_default());
+    }
     let indent = indent_of(source, symbol.start_byte);
     let doc_start = doc_start_byte(source, symbol)?;
 
@@ -945,7 +977,7 @@ fn symbol_edit(
     let range = match operation {
         SymbolOp::Replace => (symbol.start_byte, symbol.end_byte),
         SymbolOp::Delete => (doc_start, symbol.end_byte),
-        SymbolOp::ReplaceBody => body_range(source, symbol)?,
+        SymbolOp::ReplaceBody => body_range(parsed, source, symbol)?,
         SymbolOp::InsertBefore => (symbol.start_byte, symbol.start_byte),
         SymbolOp::InsertAfter => (symbol.end_byte, symbol.end_byte),
     };
@@ -985,32 +1017,143 @@ fn symbol_edit(
     })
 }
 
-/// The bytes of a symbol's body, braces included, so the replacement supplies the whole body
-/// and the symbol keeps its shape.
+/// The bytes of a symbol's body, braces included, so the replacement supplies the whole body and
+/// the symbol keeps its shape.
 ///
-/// This takes the first `{` and the last `}` in the symbol's extent, which is right for an
-/// ordinary braced body and *wrong* when the first `{` belongs to something else - a
-/// destructuring parameter, a default value, an object type in a signature. Nothing here parses
-/// the tree to find the real body, so what catches that case is the syntax gate: a replacement
-/// aimed at the wrong range produces new content that does not parse, `post_errors` rises above
-/// `pre_errors`, and the preview refuses the plan with `gate_failed`. That is fail-closed -
-/// the reviewer never receives the wrong plan - but it is a refusal for the wrong stated reason,
-/// so a caller who hits it should be told to re-indent or use `replace` instead.
-fn body_range(source: &str, symbol: &Symbol) -> Result<(usize, usize), ToolError> {
-    let extent = &source[symbol.start_byte..symbol.end_byte];
-    let open = extent.find('{').map(|i| symbol.start_byte + i);
-    let close = extent.rfind('}').map(|i| symbol.start_byte + i);
-    match (open, close) {
-        (Some(open), Some(close)) if close >= open => Ok((open, close + 1)),
-        _ => Err(ToolError::new(
+/// The body comes from the syntax tree ([`symbol_body_range`]): the `body` field of the symbol's
+/// own definition node, so a `{` in a destructuring parameter, a default value or an object type
+/// in the signature is never taken for it, and neither is the body of something nested inside the
+/// symbol. A body that is not braced (an arrow function with an expression body) is not one this
+/// operation can replace.
+///
+/// When the tree has no `body` field, a **container** declaration (a Go `type … struct`, a Rust
+/// `struct`/`enum`, a TypeScript `interface`) still has its members between its first `{` and its
+/// last `}`, and that is what is replaced. Anything else without a body (a method signature, a
+/// function declaration without a definition, a constant) is refused: its braces, if it has any,
+/// belong to types in its signature.
+fn body_range(
+    parsed: &ParsedFile,
+    source: &str,
+    symbol: &Symbol,
+) -> Result<(usize, usize), ToolError> {
+    let no_body = || {
+        ToolError::new(
             ErrorCode::InvalidArgs,
             format!(
                 "{} has no body between braces, so there is no body to replace.",
                 symbol.qualified
             ),
             "Use operation=replace or operation=delete for a symbol like this one.",
-        )),
+        )
+    };
+    if let Some((start, end)) = symbol_body_range(parsed, symbol) {
+        let body = &source[start..end];
+        if body.starts_with('{') && body.ends_with('}') {
+            return Ok((start, end));
+        }
+        return Err(no_body());
     }
+    let container = matches!(
+        symbol.kind,
+        SymbolKind::Class
+            | SymbolKind::Struct
+            | SymbolKind::Enum
+            | SymbolKind::Interface
+            | SymbolKind::Trait
+            | SymbolKind::Impl
+            | SymbolKind::Module
+            | SymbolKind::Namespace
+            | SymbolKind::Type
+    );
+    if !container {
+        return Err(no_body());
+    }
+    let extent = &source[symbol.start_byte..symbol.end_byte];
+    let open = extent.find('{').map(|i| symbol.start_byte + i);
+    let close = extent.rfind('}').map(|i| symbol.start_byte + i);
+    match (open, close) {
+        (Some(open), Some(close)) if close >= open => Ok((open, close + 1)),
+        _ => Err(no_body()),
+    }
+}
+
+/// `replace_body` for Python: the body is the definition's indented block, and `text` is its new
+/// statements, written at any indentation.
+///
+/// The text is re-indented to the block ([`crate::pybody::reindent`]) and the result is checked
+/// against Python's indentation rules ([`crate::pybody::check_block`]) before an edit exists,
+/// because tree-sitter-python recovers from an indentation mistake without reporting an error and
+/// the syntax gate would let it through. A body written on the header's own line
+/// (`def f(): return 1`) is replaced by a block on the lines below, indented one level deeper
+/// than the header; continuing the header's line would put every line after the first outside
+/// the function.
+fn python_body_edit(
+    parsed: &ParsedFile,
+    source: &str,
+    symbol: &Symbol,
+    text: &str,
+) -> Result<Edit, ToolError> {
+    let (start, end) = symbol_body_range(parsed, symbol).ok_or_else(|| {
+        ToolError::new(
+            ErrorCode::InvalidArgs,
+            format!(
+                "{} has no body block, so there is no body to replace.",
+                symbol.qualified
+            ),
+            "Use operation=replace or operation=delete for a symbol like this one.",
+        )
+    })?;
+    let eol = crate::rewrite::line_ending_at(source, start);
+    let line_start = source[..start].rfind('\n').map_or(0, |i| i + 1);
+    let on_header_line = !source[line_start..start].trim().is_empty();
+
+    let (edit_start, indent) = if on_header_line {
+        // Back over the blanks between the colon and the statement, so the new block starts
+        // right after the colon.
+        let colon_end = source[..start].trim_end_matches([' ', '\t']).len();
+        if !source[..colon_end].ends_with(':') {
+            return Err(ToolError::new(
+                ErrorCode::InvalidArgs,
+                format!("the body of {} does not follow a colon.", symbol.qualified),
+                "Use operation=replace with the whole definition instead.",
+            ));
+        }
+        let header = indent_of(source, symbol.start_byte);
+        let unit = if header.contains('\t') { "\t" } else { "    " };
+        (colon_end, format!("{header}{unit}"))
+    } else {
+        (start, indent_of(source, start))
+    };
+
+    let bad_text = |why: String| {
+        ToolError::new(
+            ErrorCode::InvalidArgs,
+            format!(
+                "the new body of {} is not valid Python: {why}.",
+                symbol.qualified
+            ),
+            "Send the body's statements with consistent indentation: each nested block indented \
+             further than the line that opens it. Any common indentation is removed for you.",
+        )
+    };
+    let body = crate::pybody::reindent(text, &indent, eol).map_err(bad_text)?;
+    let as_placed = format!("{indent}{body}");
+    let base_width = indent.chars().fold(
+        0usize,
+        |w, c| if c == '\t' { (w / 8 + 1) * 8 } else { w + 1 },
+    );
+    crate::pybody::check_block(&as_placed, base_width).map_err(bad_text)?;
+
+    let replacement = if on_header_line {
+        format!("{eol}{as_placed}")
+    } else {
+        body
+    };
+    Ok(Edit {
+        start: edit_start,
+        end,
+        replacement,
+    })
 }
 
 /// The first byte of the symbol's leading doc comment, or the symbol's own first byte.
@@ -1134,6 +1277,8 @@ fn finish_file(
             edits,
         },
         diff,
+        overlaps_dropped: 0,
+        wrapped: 0,
         matches,
     })
 }

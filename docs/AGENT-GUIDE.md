@@ -51,7 +51,7 @@ is most likely to get wrong.
 | `ast_plan_show` | read | true | One plan's summary and diff, before deciding to apply it | To apply it — showing and applying are separate on purpose | `plan_not_found`, `ambiguous` (a prefix matching several) |
 | `ast_edit_preview` | read | **false** (writes the plan store, never the workspace) | Turning an edit request into a reviewable plan and a plan id | To change anything — previewing writes no workspace file, by design | `invalid_edit`, `comment_loss`, `limit_exceeded`, `outside_workspace`, `protected_path` |
 | `ast_edit_apply` | **write** | false | Applying a plan the user has seen and approved, with the full plan id | Without showing the diff and getting approval; with a plan *prefix* — apply takes a full id | `write_disabled`, `plan_not_found`, `plan_expired`, `stale_plan`, `already_applied`, `gate_failed`, `busy`, `diverged` |
-| `ast_undo` | **write** | false | Reverting an apply, when nothing has touched those files since | To revert a file someone else has since edited — that is `diverged`, and a person must resolve it | `write_disabled`, `plan_not_found`, `diverged`, `journal_missing`, `busy` |
+| `ast_undo` | **write** | false | Reverting an apply, when nothing has touched those files since | To revert a file someone else has since edited — that is `diverged`, and a person must resolve it | `write_disabled`, `plan_not_found`, `plan_corrupt`, `diverged`, `busy` |
 | `ast_recover` | **write** | false | After a reported crash, to converge or roll back a half-applied plan | As routine cleanup — every apply already recovers first | `write_disabled`, `rollback_incomplete`, `busy`, `io_error` |
 
 Two rows deserve the emphasis, because getting them wrong is expensive:
@@ -113,11 +113,13 @@ change as long as nobody has edited those files since.
 ### When writing is disabled
 
 If `ast_info` says `write: disabled`, you can still `ast_edit_preview`. Give the
-plan id to the user: they can review and apply it themselves with
-`opencrayast edit show <plan-id>` and `opencrayast edit apply <plan-id>`. That last
-command asks the person to confirm and applies only if they agree; from a script it
-refuses unless the user passes `--yes`, which they should not do for a plan they have
-not read. Do not look for a way around the restriction.
+plan id to the user: they can review and apply it themselves, from the workspace
+directory, with `opencrayast edit show <plan-id>` and
+`opencrayast --write edit apply <plan-id>`. `--write` takes effect only when their own
+configuration sets `policy.allow_write = true`. The apply command asks the person to confirm
+and applies only if they agree; from a script it refuses unless the user passes `--yes`,
+which they should not do for a plan they have not read. Do not look for a way around the
+restriction.
 
 ## Writing good patterns
 

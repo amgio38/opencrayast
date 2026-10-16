@@ -72,9 +72,9 @@ side (see [Verify after every apply](#verify-after-every-apply)).
    not an address: refer to those files by their absolute path, and never preview an
    edit on them (it can never be applied).
 
-4. **Spell argument names exactly.** Unknown arguments are ignored without an error,
-   so a typo silently does nothing. Note that `ast_outline` takes `include_docs` while
-   `ast_get` takes `include_doc`.
+4. **Spell argument names exactly.** An argument a tool does not have is refused with
+   `[invalid_args]`, and the message lists the ones it accepts. Note that `ast_outline`
+   takes `include_docs` while `ast_get` takes `include_doc`.
 
 ## Reading code
 
@@ -156,8 +156,7 @@ src/lib.rs:12:36-12:46  x.unwrap()  $X = x
 The full pattern language, including `rule` constraints, is in
 [`docs/PATTERNS.md`](https://github.com/amgio38/opencrayast/blob/main/docs/PATTERNS.md).
 **Over MCP, do not send a `rule` argument.** It is refused with `[invalid_args]`. Narrow
-with the pattern itself and with `paths` instead, even where a truncation footer
-suggests adding a rule.
+with the pattern itself and with `paths` instead.
 
 ## Changing code
 
@@ -181,10 +180,12 @@ read-only.
  "operation": "replace_body", "text": "{ x.unwrap_or(0) }"}
 ```
 
-`replace_body` works only for languages whose bodies are delimited by braces. It takes
-the span from the symbol's first `{` to its last `}`, so it refuses a Python `def`, and
-it can pick the wrong span when the signature itself contains braces (destructuring,
-an inline object type). In those cases use `replace` with the whole new symbol.
+`replace_body` finds the body in the syntax tree, so braces in the signature
+(destructuring, an inline object type) are never mistaken for it. In a brace language
+the text includes the braces. In Python the text is the body's statements: write them at
+any indentation and they are re-indented to the body; text Python would reject for its
+indentation is refused. A symbol without a body of its own, such as an arrow function
+with an expression body or an object literal, is refused; use `replace` for it.
 
 Read the symbol with `ast_get` first, so that the new text is based on the current
 code.
@@ -199,14 +200,13 @@ the captured source text:
 ```
 
 For a rewrite, run `ast_search` with the same pattern first and check that the matches
-are exactly the places you mean to change. The two can differ in ways the preview does
-not announce: when matches are nested, the rewrite changes only the outermost one, and
-a captured expression may be wrapped in parentheses to keep its meaning. Compare the
-diff with the search results.
+are exactly the places you mean to change. The preview tells you where the two differ:
+a `nested:` line when matches inside a larger match were left unchanged (only the
+outermost is rewritten), and a `parenthesised:` line when a captured expression was
+wrapped in parentheses to keep its meaning.
 
-A rewrite that would drop comments is refused with `[comment_loss]`. Over MCP there is
-no option to allow that, whatever the error's `Next:` line says. Capture the part that
-holds the comment, or narrow the rewrite.
+A rewrite that would drop comments is refused with `[comment_loss]`. Capture the part
+that holds the comment, or narrow the pattern so the comment lies outside every match.
 
 `note` is optional for both kinds: a short label stored with the plan for reviewers.
 Never put secrets in it.
@@ -227,9 +227,9 @@ A preview that matches nothing returns no plan id. Widen the pattern or the path
 
 - **Show the diff to the user.** Your description of the change is not the evidence;
   the diff is. If the diff in the preview was cut short, `ast_plan_show` with the plan
-  id returns every hunk. Omit `limit` to get them all; `limit: 0` is refused. Use
-  `ast_plan_show` only **before** the plan is applied: afterwards it does not show the
-  original diff reliably.
+  id returns every hunk. Omit `limit` to get them all; `limit: 0` is refused. It shows
+  the diff as planned, before and after the apply, and it reports a file that changed
+  since the preview instead of drawing a diff over it.
 - Check the summary: the number of files and edits, any skipped files, and the
   `syntax errors before → after` count for each file. A file that already has syntax
   errors can still be edited, but treat it with more care.
@@ -264,7 +264,7 @@ commands must run in the directory the server was started with (or name it with
 cd <workspace>
 opencrayast edit show <plan-id>             # the same diff, with colour
 opencrayast --write edit apply <plan-id>    # lists the files, asks y/N, applies only on yes
-opencrayast --write edit undo <plan-id>     # reverts it, while the plan has not expired
+opencrayast --write edit undo <plan-id>     # reverts it later if needed
 ```
 
 `--write` only takes effect when the user's own configuration file contains the lines
@@ -303,11 +303,11 @@ edit. It does **not** guarantee that the code compiles or behaves.
 1. Run the project's type checker, the language server's diagnostics or the tests on
    the files that the apply output lists.
 2. If something is wrong, `ast_undo` with the same full plan id reverts the change,
-   provided nobody has edited those files since. **Undo needs the plan, and the plan
-   expires 15 minutes after the preview by default**, whatever the apply output says
-   about how long it is kept. So verify straight away. Once the plan has expired, undo
-   answers `[plan_corrupt]` or `[plan_not_found]` and the way back is version control.
+   provided nobody has edited those files since. Undo stays possible for as long as the
+   apply output says (7 days by default), even after the plan itself has expired.
    `[diverged]` means the files changed after the apply. Do not retry; tell the user.
+   `[plan_not_found]` means there is no journal any more, so the way back is version
+   control.
 3. Tell the user which files changed and how you verified them. If the workspace is
    under version control, the user can always review or revert the change there.
 
@@ -351,10 +351,10 @@ sign.
 | `ast_search` | read | `pattern` | `language`, `paths`, `context_lines`, `limit`; no `rule` over MCP |
 | `ast_explain_pattern` | read | `pattern`, `language` | Reads no files |
 | `ast_plan_list` | read | – | `limit` (default 20) |
-| `ast_plan_show` | read | `plan_id` (a prefix of at least 10 characters is accepted) | `file`, `offset`, `limit` (hunks; omit for all); use before applying |
+| `ast_plan_show` | read | `plan_id` (a prefix of at least 10 characters is accepted) | `file`, `offset`, `limit` (hunks; omit for all) |
 | `ast_edit_preview` | read, stores a plan | `kind` and that kind's arguments | Never modifies workspace files |
 | `ast_edit_apply` | write | `plan_id` (full) | Only after the user approved the diff |
-| `ast_undo` | write | `plan_id` (full) | Only while the plan is unexpired; `[diverged]` if files changed since |
+| `ast_undo` | write | `plan_id` (full) | For the journal's retention (7 days); `[diverged]` if files changed since |
 | `ast_recover` | write | – | Only after an interrupted apply |
 
 The three write tools are listed only when the server runs in write mode. In

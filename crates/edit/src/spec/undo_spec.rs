@@ -1288,3 +1288,143 @@ fn a_poisoned_journal_store_lock_does_not_disable_the_store_for_the_process() {
         err.message
     );
 }
+
+// ---- the journal's own copy of the plan ----------------------------------------------------------
+
+fn journal_dir(w: &World, plan_id: &str) -> PathBuf {
+    w.state
+        .join(format!("ws-{}", w.ws))
+        .join("journal")
+        .join(plan_id)
+}
+
+/// Long past the plan's TTL, with the plan store swept, so the plan store no longer has the plan.
+fn expire_and_sweep(w: &World) {
+    w.advance((w.limits.plan_ttl_minutes + 1) * 60 + 24 * 3600);
+    w.plans.sweep().unwrap();
+}
+
+/// The undo window is the journal's retention: the plan store forgets the plan after its TTL, and
+/// the undo authenticates the journal against the copy of the plan the journal keeps.
+#[test]
+fn an_undo_after_the_plan_left_the_store_uses_the_journals_copy() {
+    let (mut w, id, pre, _) = scenario();
+    expire_and_sweep(&w);
+    w.restart();
+    assert_eq!(
+        w.plans.get_for_read(&id).unwrap_err().code,
+        ErrorCode::PlanNotFound,
+        "precondition: the plan store no longer has the plan"
+    );
+    let res = undo(&w.ctx(&NoFault), &id).unwrap();
+    assert_eq!(res.to, JournalState::Undone);
+    assert_eq!(w.reads(&["a.rs", "b.rs"]), pre);
+}
+
+/// Recovery authenticates a journal the same way, so an apply interrupted by a crash is rolled
+/// back even when the restart comes after the plan's TTL.
+#[test]
+fn recovery_after_the_plan_left_the_store_uses_the_journals_copy() {
+    let (mut w, _id, pre) = three_files_crashed_after_the_first();
+    expire_and_sweep(&w);
+    w.restart();
+    recover(&w.ctx(&NoFault)).unwrap();
+    assert_eq!(w.reads(&["a.rs", "b.rs", "c.rs"]), pre);
+}
+
+/// A journal written before the copy existed falls back to the plan store, as before.
+#[test]
+fn a_journal_without_a_plan_copy_is_undone_while_the_plan_is_in_the_store() {
+    let (mut w, id, pre, _) = scenario();
+    fs::remove_file(journal_dir(&w, &id).join("plan.json")).unwrap();
+    w.restart();
+    assert_eq!(w.journals.read_plan(&id).unwrap(), None);
+    undo(&w.ctx(&NoFault), &id).unwrap();
+    assert_eq!(w.reads(&["a.rs", "b.rs"]), pre);
+}
+
+/// …and once that plan is gone too, nothing can authenticate the journal: refused, untouched.
+#[test]
+fn a_journal_without_a_plan_copy_whose_plan_expired_is_refused_and_untouched() {
+    let (mut w, id, _, post) = scenario();
+    fs::remove_file(journal_dir(&w, &id).join("plan.json")).unwrap();
+    expire_and_sweep(&w);
+    w.restart();
+    let err = undo(&w.ctx(&NoFault), &id).unwrap_err();
+    assert_eq!(err.code, ErrorCode::PlanCorrupt, "{}", err.message);
+    assert_eq!(w.reads(&["a.rs", "b.rs"]), post, "nothing was written");
+    assert_eq!(w.journals.load(&id).unwrap().state, JournalState::Applied);
+}
+
+/// The copy is verified like any stored plan: bytes of another plan under this id are refused
+/// before anything is written, so the copy cannot be used to steer an undo.
+#[test]
+fn an_altered_plan_copy_is_refused_before_anything_is_written() {
+    let (mut w, id, _, post) = scenario();
+    let other = w.build_plan(&[("a.rs", vec![rep("fn one() { 11 }\n", "11", "99")])]);
+    fs::write(
+        journal_dir(&w, &id).join("plan.json"),
+        other.canonical_bytes(),
+    )
+    .unwrap();
+    w.restart();
+    let err = undo(&w.ctx(&NoFault), &id).unwrap_err();
+    assert_eq!(err.code, ErrorCode::PlanCorrupt, "{}", err.message);
+    assert_eq!(w.reads(&["a.rs", "b.rs"]), post, "nothing was written");
+}
+
+/// A copy that is not a private regular file is refused the same way.
+#[test]
+fn a_plan_copy_readable_by_others_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let (mut w, id, _, post) = scenario();
+    let path = journal_dir(&w, &id).join("plan.json");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    w.restart();
+    let err = undo(&w.ctx(&NoFault), &id).unwrap_err();
+    assert_eq!(err.code, ErrorCode::PlanCorrupt, "{}", err.message);
+    assert_eq!(w.reads(&["a.rs", "b.rs"]), post);
+}
+
+/// E-11 holds for the copy as it does for the plan store: a journal whose plan is bound to another
+/// workspace is refused, even when its manifest has been rewritten to claim this one.
+#[test]
+fn a_plan_copy_bound_to_another_workspace_is_refused() {
+    let (mut w, id, _, post) = scenario();
+    let src = journal_dir(&w, &id);
+    let mut foreign = w.journals.read_plan(&id).unwrap().unwrap();
+    foreign.workspace_id = "w-ffffffffffffffffffffffffffffffff".into();
+    let foreign_id = foreign.id();
+    let dst = journal_dir(&w, &foreign_id);
+    fs::create_dir(&dst).unwrap();
+    fs::create_dir(dst.join("orig")).unwrap();
+    for e in fs::read_dir(src.join("orig")).unwrap().flatten() {
+        fs::copy(e.path(), dst.join("orig").join(e.file_name())).unwrap();
+    }
+    let mut m =
+        crate::journal::Manifest::parse(&fs::read(src.join("manifest.json")).unwrap()).unwrap();
+    m.plan_id = foreign_id.clone();
+    m.plan_digest = opencrayast_core::hash::ContentHash::of(&foreign.canonical_bytes());
+    fs::write(dst.join("manifest.json"), m.canonical_bytes()).unwrap();
+    fs::write(dst.join("plan.json"), foreign.canonical_bytes()).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for p in [dst.clone(), dst.join("orig")] {
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let mut files = vec![dst.join("manifest.json"), dst.join("plan.json")];
+        files.extend(
+            fs::read_dir(dst.join("orig"))
+                .unwrap()
+                .flatten()
+                .map(|e| e.path()),
+        );
+        for p in files {
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o600)).unwrap();
+        }
+    }
+    w.restart();
+    let err = undo(&w.ctx(&NoFault), &foreign_id).unwrap_err();
+    assert_eq!(err.code, ErrorCode::WrongWorkspace, "{}", err.message);
+    assert_eq!(w.reads(&["a.rs", "b.rs"]), post, "nothing was written");
+}

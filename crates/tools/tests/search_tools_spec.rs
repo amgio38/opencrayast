@@ -117,7 +117,7 @@ fn the_limit_truncates_and_says_more_exist() {
     a.limit = Some(2);
     let out = ast_search(&c, &a).unwrap();
     assert!(out.starts_with("Found 2 matches in "), "{out}");
-    assert!(out.ends_with("[truncated: showing 2 matches, more exist; narrow `paths`, add a `rule` or raise `limit`]\n"), "{out}");
+    assert!(out.ends_with("[truncated: showing 2 matches, more exist; narrow `paths`, make the pattern more specific or raise `limit`]\n"), "{out}");
     assert_eq!(out.lines().count(), 1 + 2 + 1, "{out}");
 }
 

@@ -117,7 +117,7 @@ to the text rendering. Tests: OUT-04, OUT-05, OUT-06.
 | `ast_explain_pattern` | read | true | – | true | false |
 | `ast_plan_list` | read | true | – | true | false |
 | `ast_plan_show` | read | true | – | true | false |
-| `ast_edit_preview` | read | **false** (writes the plan store under `<workspace>/.opencrayast`; never the workspace's *files*) | false | true | false |
+| `ast_edit_preview` | read | **false** (writes the plan store in the user's state directory; never the workspace's *files*) | false | true | false |
 | `ast_edit_apply` | **write** | false | **true** | false | false |
 | `ast_undo` | **write** | false | **true** | false | false |
 | `ast_recover` | **write** | false | **true** | true | false |
@@ -145,7 +145,7 @@ What is running and what it will allow. Call it first when unsure what mode you 
 
 **Arguments:** none.
 
-**Output** (exactly five lines; byte sizes as `N MiB` / `N KiB` / `N B`; separator is
+**Output** (exactly six lines; byte sizes as `N MiB` / `N KiB` / `N B`; separator is
 U+00B7 surrounded by spaces):
 
 ```
@@ -153,8 +153,12 @@ opencrayast 0.20261002.1 (mode: read-only)
 workspace: . (id w-5c1e9a07...)
 languages: rust (tier 1), typescript (tier 1), tsx (tier 1), javascript (tier 1), python (tier 1), go (tier 1)
 limits: file 4 MiB · output 64 KiB · results 200 · plan 50 files / 500 edits
+config: defaults (no user configuration file found)
 write: disabled (needs BOTH --allow-write AND policy.allow_write = true in the server config; together they expose ast_edit_apply, ast_undo, ast_recover)
 ```
+
+The `config` line names the configuration file in force and the route that chose it, or says
+that the defaults apply.
 
 `languages` lists only grammars built into this binary, in `Language::all()` order.
 With write mode the last line is
@@ -315,8 +319,8 @@ passing an empty list is a request to search nothing.
 (`crates/tools/src/search.rs`) and it is published for `ast_edit_preview`, but the
 `tools/call` path **refuses** it with `invalid_args` rather than silently dropping
 it — an unknown-shaped argument that is ignored is exactly the kind of quiet
-misbehaviour this tool set avoids. Callers on MCP should omit it; the rule language
-is reachable through the CLI.
+misbehaviour this tool set avoids. Callers on MCP should omit it and narrow with the
+pattern itself and with `paths`. No shipped surface takes a `rule` today.
 
 **Output:**
 
@@ -354,19 +358,20 @@ complete statement").
 
 **Published description** (`tools/list`, quoted exactly — see [Conventions](#conventions)):
 
-> Preview an edit as a plan: the diff, the plan id, and what applying it would change. THIS CALL PERSISTS the plan under `<workspace>/.opencrayast` — the workspace's files are never modified, but the returned plan_id only exists because a file was written, which is why readOnlyHint is false. kind=rewrite needs language, pattern, replacement and paths; kind=symbol needs path, symbol and operation, plus text for replace, replace_body, insert_before and insert_after (text must include the surrounding braces for replace_body, and is unused by delete).
+> Preview an edit as a plan: the diff, the plan id, and what applying it would change. THIS CALL PERSISTS the plan in the user's state directory, outside the workspace — the workspace's files are never modified, but the returned plan_id only exists because a file was written, which is why readOnlyHint is false. kind=rewrite needs language, pattern, replacement and paths; kind=symbol needs path, symbol and operation, plus text for replace, replace_body, insert_before and insert_after (for replace_body, text must include the surrounding braces, or in Python be the body's statements; text is unused by delete).
 
-Produce a **plan**. The plan is **persisted** under the workspace's state directory
-`<workspace>/.opencrayast` — that path is inside the user's tree, so this call creates files
-there even though it never modifies the workspace's own content. That is what `readOnlyHint:
-false` records, and it is why the tool still appears in the read-only listing.
+Produce a **plan**. The plan is **persisted** in the user's state directory
+(`$XDG_STATE_HOME/opencrayast/ws-<id>/`, `~/.local/state/opencrayast/ws-<id>/` when that is unset,
+`%LOCALAPPDATA%\opencrayast\ws-<id>\` on Windows), never inside the workspace. So this call
+writes a file even though it never modifies the workspace's own content. That is what
+`readOnlyHint: false` records, and it is why the tool still appears in the read-only listing.
 
 | Argument | Type | Meaning |
 |---|---|---|
 | `kind` | `"rewrite"` \| `"symbol"` (required) | See [`EDIT-MODEL.md`](EDIT-MODEL.md#edit-kinds) |
 | `language`, `paths`, `pattern`, `replacement` | | For `rewrite` — all four are required. `rule` is **not** accepted on the `tools/call` path and is no longer published in the schema |
 | `path`, `symbol`, `operation` | | For `symbol` — all three are required |
-| `text` | string | For `symbol`, **conditionally**: required by `replace`, `replace_body`, `insert_before` and `insert_after`, and unused by `delete`. For `replace_body` it must include the surrounding braces. The JSON schema cannot express a conditional, so the tool's shipped description states it in prose |
+| `text` | string | For `symbol`, **conditionally**: required by `replace`, `replace_body`, `insert_before` and `insert_after`, and unused by `delete`. For `replace_body` it must include the surrounding braces; in Python it is the body's statements, re-indented to the body and refused if Python would reject its indentation. The JSON schema cannot express a conditional, so the tool's shipped description states it in prose |
 | `note` | string (optional, ≤ `note_max_bytes` bytes, default 1024, hard max 4096) | A label stored with the plan for reviewers. The limit is `limits.note_max_bytes` and it is **enforced in bytes** at preview time. The JSON schema publishes **no** bound on `note`: the limit is operator-configurable, so any number written into the schema would drift from the enforcement. It is part of the hashed plan (changing it changes the plan id) and is shown sanitised and marked as written by the caller, not by the tool |
 
 `summary` is **not** an argument: the plan carries one, hashed, so the tool derives it from the
@@ -388,7 +393,15 @@ skipped: 1 file too large (docs/generated.ts)
 +  logger.debug("start", id)
 …
 Next: review the diff, then apply with ast_edit_apply plan_id=p-7k2m9xq4ab
-      (write mode) or with `opencrayast edit apply p-7k2m9xq4ab` (CLI).
+      (write mode) or with `opencrayast --write edit apply p-7k2m9xq4ab` (CLI).
+```
+
+Two lines follow the per-file summary when they apply, because each is a difference between
+what `ast_search` lists for the same pattern and what the plan changes:
+
+```
+nested: 1 match inside a larger match was left unchanged (only the outermost match is rewritten)
+parenthesised: a captured expression was wrapped in parentheses in 2 matches to keep its meaning
 ```
 
 A request that matches nothing is **a normal, successful result**, not an error: the
@@ -488,9 +501,13 @@ Revert an applied plan, if and only if nothing touched those files since.
 |---|---|---|
 | `plan_id` | string (required) | The applied plan (full id) |
 
-**Errors:** `[write_disabled]`, `[plan_not_found]`, `[diverged]` (lists the files
-that changed after the apply; nothing is reverted), `[journal_missing]`
-(retention expired), `[busy]`, `[io_error]`.
+**Errors:** `[write_disabled]`, `[plan_not_found]` (there is no journal for this plan: it
+was never applied, or its journal was removed by retention, so there are no originals to restore),
+`[plan_corrupt]` (the journal or its copy of the plan does not verify), `[diverged]` (lists the
+files that changed after the apply; nothing is reverted), `[busy]`, `[io_error]`.
+
+The journal keeps its own copy of the plan, so an undo works for as long as the journal is
+retained (`journal_retention_days`, 7 by default), not only while the plan is unexpired.
 
 ## `ast_recover` *(write mode)*
 
@@ -567,7 +584,7 @@ mapping is in [`LANGUAGES.md`](LANGUAGES.md#outline-queries).
 | `gate_failed` | A safety gate rejected the new content | Fix the request; the message names the gate |
 | `diverged` | Undo/recovery found a file changed after the apply | A person must resolve (CLI) |
 | `busy` | Another apply holds the lock | Retry shortly |
-| `journal_missing` | Retention expired | Undo no longer possible |
+| `journal_missing` | Reserved. No current path emits it: an undo with no journal answers `plan_not_found`, because a missing journal cannot show whether the plan was ever applied | – |
 | `unsupported_target` | The target cannot be replaced without losing a property: a symlink, a non-regular file, a hard-linked or read-only file, or extended attributes that cannot be copied. **Nothing was written** | Edit a plain, single-linked, writable file; copy the attributes yourself if the target has them |
 | `replaced_not_durable` | **The file WAS replaced**, but the parent directory could not be synced, so the change may not survive a crash. Not a "nothing happened" error | Re-read the file to see whether the new contents are present, then decide whether to retry; do not assume the change was lost |
 | `rollback_incomplete` | A rollback could not finish, so the workspace may be partly applied | Run `ast_recover`; if it cannot finish, restore from version control and report the plan id |

@@ -384,7 +384,7 @@ note (written by the caller): a probe note
 +log2(2);
 ```
 Next: review the diff, then apply with ast_edit_apply plan_id={id}
-      (write mode) or with `opencrayast edit apply {id}` (CLI).
+      (write mode) or with `opencrayast --write edit apply {id}` (CLI).
 
 Risk summary
   files: 1   edits: 2   bytes: +14 \u{2212}12
