@@ -239,6 +239,12 @@ jobs:
       # softprops/action-gh-release flattens paths to basenames, so uploading
       # dist/*/opencrayast would collide Linux vs Darwin. install.sh / install.ps1
       # expect one archive per triple: opencrayast-$TARGET.tar.gz|.zip (+ .sha256).
+      #
+      # Modes are set here, not inherited: upload-artifact / download-artifact do not
+      # keep file permissions, so the binaries arrive as 0644 and a plain `cp` packed
+      # them that way. Someone who unpacks the archive by hand must get programs that
+      # run. Ownership is normalised too, so unpacking as root does not leave files
+      # owned by the runner's uid.
       - name: Package per-triple archives
         run: |
           set -euo pipefail
@@ -250,15 +256,24 @@ jobs:
             [ -d "dist/$triple" ] || continue
             stage=$(mktemp -d)
             mkdir -p "$stage/$doc"
-            cp -f dist/LICENSE dist/README.md dist/THIRD-PARTY-LICENSES.md dist/VERSION "$stage/$doc/"
+            install -m 0644 dist/LICENSE dist/README.md dist/THIRD-PARTY-LICENSES.md dist/VERSION "$stage/$doc/"
             if [ -f "dist/$triple/opencrayast.exe" ]; then
-              cp -f "dist/$triple/opencrayast.exe" "dist/$triple/opencrayast-mcp.exe" "$stage/"
+              install -m 0755 "dist/$triple/opencrayast.exe" "dist/$triple/opencrayast-mcp.exe" "$stage/"
               asset="opencrayast-${triple}.zip"
               (cd "$stage" && zip -qr "$OLDPWD/dist/assets/$asset" opencrayast.exe opencrayast-mcp.exe "$doc")
             else
-              cp -f "dist/$triple/opencrayast" "dist/$triple/opencrayast-mcp" "$stage/"
+              install -m 0755 "dist/$triple/opencrayast" "dist/$triple/opencrayast-mcp" "$stage/"
               asset="opencrayast-${triple}.tar.gz"
-              (cd "$stage" && tar -czf "$OLDPWD/dist/assets/$asset" opencrayast opencrayast-mcp "$doc")
+              (cd "$stage" && tar --owner=0 --group=0 --numeric-owner -czf "$OLDPWD/dist/assets/$asset" opencrayast opencrayast-mcp "$doc")
+              # The archive itself is the evidence: both programs must be listed as
+              # executable, or the release stops here.
+              for bin in opencrayast opencrayast-mcp; do
+                mode=$(tar -tvzf "dist/assets/$asset" "$bin" | awk '{print $1}')
+                if [ "$mode" != "-rwxr-xr-x" ]; then
+                  echo "::error::$asset: $bin is packed as $mode, expected -rwxr-xr-x"
+                  exit 1
+                fi
+              done
             fi
             (cd dist/assets && sha256sum "$asset" > "${asset}.sha256")
             rm -rf "$stage"

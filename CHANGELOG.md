@@ -6,6 +6,14 @@ numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Linux and macOS release archives pack `opencrayast` and `opencrayast-mcp` as
+  executable (0755) and owned by root; they were packed as 0644, because the
+  artifact upload between the build and publish jobs drops file modes, so a binary
+  unpacked by hand would not run. The publish job now fails if either binary is not
+  executable inside the archive. `install.sh` was not affected.
+
 ## [0.20261017.001] — 2026-10-17
 
 ### Fixed
