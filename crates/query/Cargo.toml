@@ -25,4 +25,4 @@ regex.workspace = true
 
 [dev-dependencies]
 # Differential oracle only (PAT-05 / ADR-005). Never a runtime dependency.
-ast-grep-core = { version = "=0.45.3", default-features = true }
+ast-grep-core = { version = "=0.50.0", default-features = true }
