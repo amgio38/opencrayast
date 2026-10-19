@@ -50,8 +50,9 @@ policy gate (`cargo deny check`).
 | `MIT` | 10 |
 | `MIT OR Apache-2.0` | 31 |
 | `Unlicense OR MIT` | 2 |
+| `Zlib` | 1 |
 
-Total third-party normal dependencies: **48**.
+Total third-party normal dependencies: **49**.
 
 ## Crate inventory
 
@@ -72,6 +73,7 @@ Total third-party normal dependencies: **48**.
 | `digest` | 0.10.7 | `MIT OR Apache-2.0` | https://github.com/RustCrypto/traits |
 | `equivalent` | 1.0.2 | `Apache-2.0 OR MIT` | https://github.com/indexmap-rs/equivalent |
 | `errno` | 0.3.14 | `MIT OR Apache-2.0` | https://github.com/lambda-fairy/rust-errno |
+| `foldhash` | 0.2.0 | `Zlib` | https://github.com/orlp/foldhash |
 | `generic-array` | 0.14.7 | `MIT` | https://github.com/fizyk20/generic-array.git |
 | `hashbrown` | 0.17.1 | `MIT OR Apache-2.0` | https://github.com/rust-lang/hashbrown |
 | `heck` | 0.5.0 | `MIT OR Apache-2.0` | https://github.com/withoutboats/heck |
@@ -89,14 +91,14 @@ Total third-party normal dependencies: **48**.
 | `serde` | 1.0.229 | `MIT OR Apache-2.0` | https://github.com/serde-rs/serde |
 | `serde_core` | 1.0.229 | `MIT OR Apache-2.0` | https://github.com/serde-rs/serde |
 | `serde_derive` | 1.0.229 | `MIT OR Apache-2.0` | https://github.com/serde-rs/serde |
-| `serde_json` | 1.0.151 | `MIT OR Apache-2.0` | https://github.com/serde-rs/json |
+| `serde_json` | 1.0.154 | `MIT OR Apache-2.0` | https://github.com/serde-rs/json |
 | `sha2` | 0.10.9 | `MIT OR Apache-2.0` | https://github.com/RustCrypto/hashes |
 | `streaming-iterator` | 0.1.9 | `MIT OR Apache-2.0` | https://github.com/sfackler/streaming-iterator |
 | `syn` | 3.0.6 | `MIT OR Apache-2.0` | https://github.com/dtolnay/syn |
-| `tree-sitter` | 0.27.0 | `MIT` | https://github.com/tree-sitter/tree-sitter |
+| `tree-sitter` | 0.27.1 | `MIT` | https://github.com/tree-sitter/tree-sitter |
 | `tree-sitter-go` | 0.25.0 | `MIT` | https://github.com/tree-sitter/tree-sitter-go |
 | `tree-sitter-javascript` | 0.25.0 | `MIT` | https://github.com/tree-sitter/tree-sitter-javascript |
-| `tree-sitter-language` | 0.1.8 | `MIT` | https://github.com/tree-sitter/tree-sitter |
+| `tree-sitter-language` | 0.1.9 | `MIT` | https://github.com/tree-sitter/tree-sitter |
 | `tree-sitter-python` | 0.25.0 | `MIT` | https://github.com/tree-sitter/tree-sitter-python |
 | `tree-sitter-rust` | 0.24.2 | `MIT` | https://github.com/tree-sitter/tree-sitter-rust |
 | `tree-sitter-typescript` | 0.23.2 | `MIT` | https://github.com/tree-sitter/tree-sitter-typescript |
@@ -121,10 +123,10 @@ starts shelling out or fetching is visible as a diff in this table.
 
 | Crate | Version | Source | Licence | Upstream project | Upstream version | Published from | C shipped | C lines | External scanner | Build script | What the build script does |
 | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- | --- | --- |
-| `tree-sitter` | 0.27.0 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter | 0.27.0 (Cargo.toml) | `6070dbfefd326bd735e5683eb128cc1b57dad0c0` | 43 | 16089 | - | `binding_rust/build.rs` | cc compile of src/lib.c; fs write/copy/remove; bindgen |
+| `tree-sitter` | 0.27.1 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter | 0.27.1 (Cargo.toml) | `10eb5ac119eec9cb4267a8e035066473983f5f3a` | 43 | 16094 | - | `binding_rust/build.rs` | cc compile of src/lib.c; fs write/copy/remove; bindgen |
 | `tree-sitter-go` | 0.25.0 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter-go | 0.25.0 (tree-sitter.json) | `1547678a9da59885853f5f5cc8a99cc203fa2e2c` | 1 | 61521 | - | `bindings/rust/build.rs` | cc compile of src/parser.c |
 | `tree-sitter-javascript` | 0.25.0 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter-javascript | 0.25.0 (tree-sitter.json) | `44c892e0be055ac465d5eeddae6d3e194424e7de` | 2 | 94632 | src/scanner.c | `bindings/rust/build.rs` | cc compile of src/parser.c, src/scanner.c |
-| `tree-sitter-language` | 0.1.8 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter | 0.1.8 (Cargo.toml) | `6070dbfefd326bd735e5683eb128cc1b57dad0c0` | 3 | 3 | - | `build.rs` | no C compilation |
+| `tree-sitter-language` | 0.1.9 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter | 0.1.9 (Cargo.toml) | `10eb5ac119eec9cb4267a8e035066473983f5f3a` | 3 | 3 | - | `build.rs` | no C compilation |
 | `tree-sitter-python` | 0.25.0 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter-python | 0.25.0 (tree-sitter.json) | `293fdc02038ee2bf0e2e206711b69c90ac0d413f` | 2 | 130179 | src/scanner.c | `bindings/rust/build.rs` | cc compile of src/parser.c, src/scanner.c |
 | `tree-sitter-rust` | 0.24.2 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter-rust | 0.24.2 (tree-sitter.json) | `e2bee853694a1d3e0f6ef308fe3674542fec95d7` | 2 | 206309 | src/scanner.c | `bindings/rust/build.rs` | cc compile of src/parser.c, src/scanner.c |
 | `tree-sitter-typescript` | 0.23.2 | crates.io | `MIT` | https://github.com/tree-sitter/tree-sitter-typescript | 0.23.2 (Cargo.toml) | `f975a621f4e7f532fe322e13c4f79495e0a7b2e7` | 4 | 565418 | tsx/src/scanner.c, typescript/src/scanner.c | `bindings/rust/build.rs` | cc compile of tsx/src/parser.c, tsx/src/scanner.c, typescript/src/parser.c, typescript/src/scanner.c |
