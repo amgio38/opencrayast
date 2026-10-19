@@ -15,6 +15,25 @@
 > <https://github.com/amgio38/opencrayast> (the first public history starts
 > when the milestones below reach a public preview).
 
+## See it in action
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/media/cli-plan.gif" alt="opencrayast CLI: edit preview prints a plan id, a diff and the risk summary; edit apply is refused without --write, then applies and is undone" width="400">
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/media/mcp-tools.gif" alt="opencrayast MCP: tools/list returns eight read-only tools and eleven with write mode; ast_outline returns a file's skeleton" width="400">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top"><sub><b>Review, then apply</b> — <code>edit preview</code> stores a plan and prints its id, the diff and the risk summary. <code>edit apply</code> refuses without <code>--write</code>; with it the change lands, and <code>edit undo</code> puts the file back.</sub></td>
+    <td valign="top"><sub><b>What the agent sees</b> — <code>tools/list</code> returns eight tools in read-only mode; the three write tools appear only when write mode is enabled. <code>ast_outline</code> returns the skeleton, not the source.</sub></td>
+  </tr>
+</table>
+
+> Both clips were recorded against a scratch workspace with the published binaries; no customer data or local paths are shown.
+
 ## What it is
 
 `opencrayast` is an [MCP](https://modelcontextprotocol.io) server (plus a
