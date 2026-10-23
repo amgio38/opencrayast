@@ -84,7 +84,7 @@ release-static:
 	cp -f THIRD-PARTY-LICENSES.md $(DIST)/THIRD-PARTY-LICENSES.md
 	@python3 -c 'import re, pathlib, sys; t=pathlib.Path("Cargo.toml").read_text(); m=re.search(r"(?ms)^\[workspace\.package\].*?^version\s*=\s*\"([^\"]+)\"", t); \
 assert m, "no workspace.package version"; v=m.group(1); d=pathlib.Path("$(DIST)"); d.joinpath("VERSION").write_text(v+"\n"); \
-d.joinpath("README.md").write_text("# opencrayast release artefacts\n\nVersion: `"+v+"`\n\nProduced by `make release-static`. From the repository root:\n\n```sh\n./install.sh --dist dist --prefix \"$$HOME/.local\"\n```\n\nVerify with `SHA256SUMS`. Download-from-release is not enabled yet (see docs/RELEASE.md).\n"); print("release-static: staged version", v)'
+d.joinpath("README.md").write_text("# opencrayast release artefacts\n\nVersion: `"+v+"`\n\nProduced by `make release-static`. From the repository root:\n\n```sh\n./install.sh --dist dist --prefix \"$$HOME/.local\"\n```\n\nVerify with `SHA256SUMS`. The tagged archives are what `install.sh` downloads from a GitHub release and checks against the published SHA-256 (see docs/RELEASE.md).\n"); print("release-static: staged version", v)'
 	cd $(DIST) && sha256sum $(TARGET)/opencrayast $(TARGET)/opencrayast-mcp > SHA256SUMS
 
 # ---------------------------------------------------------------------------
