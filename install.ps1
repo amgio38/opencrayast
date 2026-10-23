@@ -289,7 +289,7 @@ function Install-FromDist {
 }
 
 # ---------------------------------------------------------------------------
-# Build path: what `irm | iex` uses while there is no tagged release.
+# Build path: what `irm | iex` uses on a target with no prebuilt release asset.
 # ---------------------------------------------------------------------------
 
 function Install-FromSource {

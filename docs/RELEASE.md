@@ -13,8 +13,8 @@ in [`MAINTENANCE.md`](MAINTENANCE.md).
 | Static musl build | `make release-static` (see below) |
 | `dist/` layout | Produced by `make release-static`; directory is gitignored |
 | Local install + checksum | `install.sh` (default) |
-| Download from a GitHub release | **Not enabled.** There is no public tagged release yet. The download entry point in `install.sh` refuses with a clear message until one exists |
-| Release workflow | `.github/workflows/release.yml` exists and is tag-triggered, with an all-or-nothing three-platform matrix and `dist/SHA256SUMS` generation. **It has never been executed** — see below |
+| Download from a GitHub release | In force: `install.sh` fetches the newest release asset for the host target and verifies it against the published SHA-256. Tags so far: `v0.20261002.1`, `v0.20261007.1`, `v0.20261017.1` |
+| Release workflow | `.github/workflows/release.yml` is tag-triggered, with an all-or-nothing three-platform matrix and `dist/SHA256SUMS` generation. It has run green three times, once per tag — see below |
 | Dependency advisory audit | `.github/workflows/audit.yml` runs `cargo audit` on a weekly schedule, plus on demand and on release tags |
 | Supply-chain gate | `cargo deny check` against committed `deny.toml` (no extra allows without an ADR) |
 
@@ -164,15 +164,14 @@ Two Windows-specific details that are not incidental:
 | **REL2-01 … 08** | the properties that decide whether the installer is *safe*: gate order, "nothing touches `PREFIX` before verification", the two-file whitelist, BOM handling, no elevation, no invented URL | **everywhere**, including CI — they are properties of the script's text and need no PowerShell |
 | **REL2-09 … 11** | **execution**: a good tree installs, a tampered digest refuses and leaves the prefix empty, a truncated sums file refuses | **a Windows or PowerShell runner only** |
 
-**REL2-09/10/11 have never been executed.** They are written and wired, and on a machine
-without `pwsh` they print `SKIP` with the reason and the run still exits zero. **A green
-`rel2` self-test is therefore not end-to-end proof of the Windows installer**, and this
-document says so where someone deciding whether to trust the installer will read it. The
-same statement appears in the script's own output, so it cannot be missed by someone who
-only reads the test log.
-
-Making those three run for real needs the `x86_64-pc-windows-msvc` leg of the release matrix,
-which has not executed either (see §7).
+**REL2-09/10/11 run only where PowerShell exists.** They are written and wired, and on a
+machine without `pwsh` they print `SKIP` with the reason and the run still exits zero, so
+**a green `rel2` self-test on a non-Windows machine is not end-to-end proof of the Windows
+installer** — this document says so where someone deciding whether to trust the installer
+will read it, and the same statement appears in the script's own output. Since the Windows
+leg of `ci.yml` (`windows-latest`, step "Installer execution self-test (install.ps1, real
+PowerShell)") started running green, those three cases are executed in CI rather than only
+described; see §7 for what that does and does not settle.
 
 ## 5. Supply chain: `cargo deny`
 
@@ -279,20 +278,20 @@ What is verified locally:
 - the `dist/` layout it produces is the layout `install.sh` verifies (§3), and its
   assembly step refuses to publish a `SHA256SUMS` that does not cover every binary.
 
-What is **not** verified and needs a real runner before the first tag:
+What was unverified before the first tag, and what the releases since then settled
+(state as of 2026-10-23):
 
-- that the three-platform matrix builds — in particular the static musl leg, which is
-  the only one whose "statically linked" assertion has ever been exercised anywhere;
-- the cross-compiled `aarch64-apple-darwin` and `x86_64-pc-windows-msvc` legs, whose
-  `.exe`/no-`.exe` staging path is untested;
-- **`install.ps1` has never been executed.** REL2-09/10/11 (good tree, tampered digest,
-  truncated sums) are written and wired into `scripts/tests/rel2_install_ps1_spec.sh`, and
-  they print `SKIP` on any machine without PowerShell. The nine contract cases around them do
-  run everywhere, but "the Windows installer refuses a bad tree" is currently a **claim about
-  the script's text**, not an observation. See §4a;
-- that `softprops/action-gh-release` publishes what this workflow passes it;
-- the end-to-end claim behind SUP-07 (artefacts verifying against published checksums
-  on a clean machine), which has no test at all.
+- **The three-platform matrix builds — now observed.** `release.yml` has run green on three
+  tags (`v0.20261002.1`, `v0.20261007.1`, `v0.20261017.1`), and each release carries assets
+  for `x86_64-unknown-linux-musl`, `aarch64-apple-darwin` and `x86_64-pc-windows-msvc`, so the
+  static musl assertion and both cross-compiled legs have been exercised on a real runner;
+- **`install.ps1` is executed in CI, but only on Windows.** REL2-09/10/11 (good tree, tampered
+  digest, truncated sums) run in the `windows-latest` leg of `ci.yml`; on any machine without
+  PowerShell they still print `SKIP` and the run still exits zero. See §4a;
+- **`softprops/action-gh-release` — now observed**: the three releases above contain the
+  assets, the per-asset `.sha256` files and `SHA256SUMS`;
+- the end-to-end claim behind SUP-07 (artefacts verifying against published checksums on a
+  clean machine) still has no test of its own.
 
 The intended first exercise is a manual `workflow_dispatch` run: it builds every
 platform and assembles the tree, but the `publish` job is gated on a tag ref and will

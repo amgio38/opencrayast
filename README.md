@@ -2,18 +2,20 @@
 
 **Structural code reading and safe structural editing for AI coding agents and the people who supervise them.**
 
-> **Status: pre-1.0, not yet released.** The project is real and working — see
-> [What works today](#what-works-today) — but it has no public release, no stable
-> tool-catalogue freeze, and a version scheme of `0.YYYYMMDD.N` (see
-> [ROADMAP.md](ROADMAP.md)). The design documents under `docs/` are normative and
-> have passed one independent adversarial review (see ADR-017). The architecture,
-> the security model, the test strategy and the release process are designed for a
-> 1.0 that can be trusted with write access to a codebase, and they are not yet
+> **Status: pre-1.0, released as tagged previews.** The project is real and working — see
+> [What works today](#what-works-today) — and it ships public tagged releases, newest
+> [`v0.20261017.1`](https://github.com/amgio38/opencrayast/releases/latest), with prebuilt
+> binaries for Linux x86-64 (static musl), macOS Apple silicon and Windows x86-64. What it
+> does not have is a 1.0 promise: no stable tool-catalogue freeze, and a version scheme of
+> `0.YYYYMMDD.N` (see [ROADMAP.md](ROADMAP.md)). The design documents under `docs/` are
+> normative and have passed one independent adversarial review (see ADR-017). The
+> architecture, the security model, the test strategy and the release process are designed
+> for a 1.0 that can be trusted with write access to a codebase, and they are not yet
 > finished: the remaining gaps are listed below rather than hidden.
 >
 > The project is published as **`opencrayast`** at
-> <https://github.com/amgio38/opencrayast> (the first public history starts
-> when the milestones below reach a public preview).
+> <https://github.com/amgio38/opencrayast>. Until 1.0, a tag means "this commit passed the
+> release gates and three platforms built it", not "the interface is frozen".
 
 ## See it in action
 
@@ -214,9 +216,10 @@ Windows. Each installer resolves in the same order: **a prebuilt release asset**
 against its `SHA256SUMS`), then **a cargo build** from a checkout or a shallow
 clone.
 
-There is no tagged release yet, so the first path finds nothing today and the
-third one runs. When the first tag is pushed the same script prefers the
-prebuilt binary, with no edit here.
+A tagged release exists, so on Linux x86-64, macOS Apple silicon and Windows x86-64 the
+first path is what runs: a prebuilt binary, verified against the SHA-256 published beside
+it. Other targets (Intel macOS, other Linux CPUs) find no matching asset and fall through
+to a build from source, with no edit here.
 
 Register the MCP server with your agent:
 

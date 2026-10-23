@@ -24,10 +24,10 @@
 #      SHA256SUMS before anything is copied;
 #   3. otherwise a cargo build, from this checkout or a shallow clone.
 #
-# Today the project has no tagged release, so path 1 finds nothing and the
-# installer falls through to the build. When the first tag is pushed this same
-# script prefers the prebuilt binary and no edit is needed: path 1 is tried first
-# and simply succeeds.
+# Tagged releases exist (newest v0.20261017.1: linux x86-64 musl, macOS aarch64,
+# Windows x86-64), so path 1 is what runs on those targets. Any other target finds
+# no matching asset there and falls through to the build; no edit here is needed
+# either way.
 #
 # The script is wrapped in main() and only runs on its last line, so a download
 # that is cut off part-way parses as an incomplete function and does nothing
@@ -343,7 +343,7 @@ install_from_release() {
 }
 
 # ---------------------------------------------------------------------------
-# Build path: what `curl | sh` uses while there is no tagged release.
+# Build path: what `curl | sh` uses on a target with no prebuilt release asset.
 # ---------------------------------------------------------------------------
 
 install_from_source() {
