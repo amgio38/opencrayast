@@ -4,7 +4,7 @@
 
 > **Status: pre-1.0, released as tagged previews.** The project is real and working — see
 > [What works today](#what-works-today) — and it ships public tagged releases, newest
-> [`v0.20261017.1`](https://github.com/amgio38/opencrayast/releases/latest), with prebuilt
+> [`v0.20261030.1`](https://github.com/amgio38/opencrayast/releases/latest), with prebuilt
 > binaries for Linux x86-64 (static musl), macOS Apple silicon and Windows x86-64. What it
 > does not have is a 1.0 promise: no stable tool-catalogue freeze, and a version scheme of
 > `0.YYYYMMDD.N` (see [ROADMAP.md](ROADMAP.md)). The design documents under `docs/` are

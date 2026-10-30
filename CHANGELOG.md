@@ -6,6 +6,13 @@ numbered `V0.YYYYMMDD.NNN` (crate version `0.YYYYMMDD.N`); see ADR-013.
 
 ## [Unreleased]
 
+## [0.20261030.001] — 2026-10-30
+
+### Changed
+
+- Dependency updates: `sha2` 0.10 to 0.11 and `ast-grep-core` (test-only differential
+  oracle) 0.50 to 0.51. Hash output is unchanged.
+
 ### Fixed
 
 - The Linux and macOS release archives pack `opencrayast` and `opencrayast-mcp` as

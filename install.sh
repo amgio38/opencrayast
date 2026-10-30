@@ -24,7 +24,7 @@
 #      SHA256SUMS before anything is copied;
 #   3. otherwise a cargo build, from this checkout or a shallow clone.
 #
-# Tagged releases exist (newest v0.20261017.1: linux x86-64 musl, macOS aarch64,
+# Tagged releases exist (newest v0.20261030.1: linux x86-64 musl, macOS aarch64,
 # Windows x86-64), so path 1 is what runs on those targets. Any other target finds
 # no matching asset there and falls through to the build; no edit here is needed
 # either way.

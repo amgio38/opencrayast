@@ -13,7 +13,7 @@ in [`MAINTENANCE.md`](MAINTENANCE.md).
 | Static musl build | `make release-static` (see below) |
 | `dist/` layout | Produced by `make release-static`; directory is gitignored |
 | Local install + checksum | `install.sh` (default) |
-| Download from a GitHub release | In force: `install.sh` fetches the newest release asset for the host target and verifies it against the published SHA-256. Tags so far: `v0.20261002.1`, `v0.20261007.1`, `v0.20261017.1` |
+| Download from a GitHub release | In force: `install.sh` fetches the newest release asset for the host target and verifies it against the published SHA-256. Tags so far: `v0.20261002.1`, `v0.20261007.1`, `v0.20261017.1`, `v0.20261030.1` |
 | Release workflow | `.github/workflows/release.yml` is tag-triggered, with an all-or-nothing three-platform matrix and `dist/SHA256SUMS` generation. It has run green three times, once per tag — see below |
 | Dependency advisory audit | `.github/workflows/audit.yml` runs `cargo audit` on a weekly schedule, plus on demand and on release tags |
 | Supply-chain gate | `cargo deny check` against committed `deny.toml` (no extra allows without an ADR) |
